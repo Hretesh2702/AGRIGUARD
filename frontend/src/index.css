@@ -327,8 +327,36 @@ body {
 .field-map-side-column {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
   min-width: 0;
+}
+
+/* ========================================================
+   REMOTE COCKPIT — SIDE BY SIDE CAMERA & DIRECTION PAD
+   ======================================================== */
+.remote-cockpit-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.28fr) minmax(400px, 1fr);
+  gap: 1.5rem;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.remote-cockpit-camera {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.remote-cockpit-controls {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+@media (max-width: 1180px) {
+  .remote-cockpit-layout {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 1024px) {
