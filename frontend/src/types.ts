@@ -99,6 +99,15 @@ export interface DiagnosticsReport {
   raw_telemetry?: any;
 }
 
+export interface VisualAnnotation {
+  type: string;
+  category: string;
+  bbox: [number, number, number, number]; // [x1, y1, x2, y2]
+  color: string;
+  label: string;
+  is_target: boolean;
+}
+
 export interface AIDetection {
   plant_id: string;
   crop: string;
@@ -115,6 +124,14 @@ export interface AIDetection {
   };
   status: string;
   bounding_box?: { x: number; y: number; w: number; h: number } | null;
+  objects?: Array<{ type: string; confidence: number; bbox?: number[] }>;
+  plant_results?: Array<any>;
+  visual_annotations?: VisualAnnotation[];
+  frame_status?: string;
+  spray_eligible?: boolean;
+  spray_allowed?: boolean;
+  message?: string;
+  frame_dimensions?: { width: number; height: number };
   inference_time_ms?: number;
   timestamp: string;
 }

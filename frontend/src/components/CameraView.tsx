@@ -744,26 +744,73 @@ export const CameraView: React.FC<CameraViewProps> = React.memo(({
               )}
             </div>
 
-            {/* Bounding Box Overlay if AI detected bounding box */}
-            {lastDetection?.bounding_box && (
+            {/* Multi-Stage Visual Overlays (Step 11): Green for valid leaf, Red for person/tool, Amber for low-quality/unsupported */}
+            {lastDetection?.visual_annotations && lastDetection.visual_annotations.length > 0 ? (
+              lastDetection.visual_annotations.map((ann, idx) => {
+                const fW = lastDetection.frame_dimensions?.width || 1280;
+                const fH = lastDetection.frame_dimensions?.height || 720;
+                const left = (ann.bbox[0] / fW) * 100;
+                const top = (ann.bbox[1] / fH) * 100;
+                const width = ((ann.bbox[2] - ann.bbox[0]) / fW) * 100;
+                const height = ((ann.bbox[3] - ann.bbox[1]) / fH) * 100;
+                const boxColor = ann.color || (ann.is_target ? '#10b981' : '#ef4444');
+
+                return (
+                  <div
+                    key={`ann-${idx}`}
+                    style={{
+                      position: 'absolute',
+                      border: `2px solid ${boxColor}`,
+                      backgroundColor: `${boxColor}22`,
+                      left: `${left}%`,
+                      top: `${top}%`,
+                      width: `${width}%`,
+                      height: `${height}%`,
+                      pointerEvents: 'none',
+                      transition: 'all 0.2s ease-out',
+                      boxShadow: `0 0 10px ${boxColor}66`,
+                      zIndex: 3
+                    }}
+                  >
+                    <span
+                      style={{
+                        position: 'absolute',
+                        top: '-22px',
+                        left: '0',
+                        background: boxColor,
+                        color: '#fff',
+                        fontSize: '0.68rem',
+                        fontWeight: 700,
+                        padding: '1px 6px',
+                        borderRadius: '3px',
+                        whiteSpace: 'nowrap',
+                        boxShadow: '0 2px 5px rgba(0,0,0,0.4)'
+                      }}
+                    >
+                      {ann.label}
+                    </span>
+                  </div>
+                );
+              })
+            ) : lastDetection?.bounding_box ? (
               <div style={{
                 position: 'absolute',
-                border: '2px solid #ef4444',
-                backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                border: '2px solid #10b981',
+                backgroundColor: 'rgba(16, 185, 129, 0.15)',
                 left: `${(lastDetection.bounding_box.x / 1280) * 100}%`,
                 top: `${(lastDetection.bounding_box.y / 720) * 100}%`,
                 width: `${(lastDetection.bounding_box.w / 1280) * 100}%`,
                 height: `${(lastDetection.bounding_box.h / 720) * 100}%`,
                 pointerEvents: 'none',
                 transition: 'all 0.2s ease-out',
-                boxShadow: '0 0 12px rgba(239, 68, 68, 0.4)',
+                boxShadow: '0 0 12px rgba(16, 185, 129, 0.4)',
                 zIndex: 3
               }}>
                 <span style={{
                   position: 'absolute',
                   top: '-20px',
                   left: '0',
-                  background: '#ef4444',
+                  background: '#10b981',
                   color: '#fff',
                   fontSize: '0.7rem',
                   fontWeight: 700,
@@ -773,6 +820,51 @@ export const CameraView: React.FC<CameraViewProps> = React.memo(({
                 }}>
                   {lastDetection.disease} ({Math.round(lastDetection.confidence * 100)}%)
                 </span>
+              </div>
+            ) : null}
+
+            {/* Target Status HUD Banner (Step 11 & Step 19) */}
+            {lastDetection && (
+              <div style={{
+                position: 'absolute',
+                top: '12px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                backgroundColor: lastDetection.status === 'HUMAN_DETECTED'
+                  ? 'rgba(239, 68, 68, 0.9)'
+                  : (lastDetection.status === 'DISEASE_RESULT' || lastDetection.status === 'HEALTHY')
+                    ? 'rgba(16, 185, 129, 0.9)'
+                    : 'rgba(30, 41, 59, 0.88)',
+                border: `1px solid ${
+                  lastDetection.status === 'HUMAN_DETECTED'
+                    ? '#ef4444'
+                    : (lastDetection.status === 'DISEASE_RESULT' || lastDetection.status === 'HEALTHY')
+                      ? '#10b981'
+                      : 'rgba(245, 158, 11, 0.6)'
+                }`,
+                color: '#fff',
+                padding: '4px 14px',
+                borderRadius: '20px',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                zIndex: 10,
+                backdropFilter: 'blur(4px)',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                pointerEvents: 'none',
+                letterSpacing: '0.02em',
+                whiteSpace: 'nowrap'
+              }}>
+                {lastDetection.status === 'HUMAN_DETECTED'
+                  ? '⚠️ [PERSON DETECTED] Disease analysis: DISABLED'
+                  : lastDetection.status === 'NO_VALID_LEAF'
+                    ? '🌿 [NO VALID LEAF] Disease analysis: IDLE'
+                    : lastDetection.status === 'UNSUPPORTED_CROP'
+                      ? '🚫 [UNSUPPORTED PLANT] Disease analysis: DISABLED'
+                      : lastDetection.status === 'LOW_QUALITY'
+                        ? '🔍 [LOW QUALITY ROI] Move camera closer'
+                        : (lastDetection.status === 'DISEASE_RESULT' || lastDetection.status === 'HEALTHY')
+                          ? '🌱 [SUPPORTED LEAF] Disease analysis: ACTIVE'
+                          : lastDetection.display_name}
               </div>
             )}
           </>

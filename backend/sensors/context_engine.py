@@ -35,8 +35,12 @@ class AgronomicContextEngine:
         }
 
         # 1. Base Score from Disease
-        if disease == "healthy":
+        if not disease or disease in ["unknown", "none", "no_leaf", "unsupported"]:
+            base_score = 100
+            breakdown["disease_impact"] = "No active foliar pathology verified"
+        elif disease == "healthy":
             base_score = 95
+            breakdown["disease_impact"] = "Optimal foliar vigor (Healthy)"
         elif severity == "mild":
             base_score = int(82 - (confidence * 12))  # ~70-75
             breakdown["disease_impact"] = f"Mild {disease} (Conf: {int(confidence*100)}%)"
@@ -46,6 +50,7 @@ class AgronomicContextEngine:
         else: # severe
             base_score = int(45 - (confidence * 20))  # ~25-35
             breakdown["disease_impact"] = f"Severe {disease} defoliation"
+
 
         # 2. Water Stress Adjustment (Real Soil Moisture)
         sm = sensor_data.get("soil_moisture", {}).get("moisture_pct")

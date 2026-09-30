@@ -51,6 +51,24 @@ class TreatmentDecisionEngine:
 
         decision_id = f"DEC-{uuid.uuid4().hex[:8].upper()}"
 
+        # 0. Vision Pipeline Safety Interlock (Non-target / Ineligible Target / Safety Lockout)
+        if ai_detection.get("spray_eligible") is False:
+            return {
+                "decision_id": decision_id,
+                "crop": crop,
+                "disease": disease if disease not in ["unknown", "none"] else None,
+                "confidence": confidence,
+                "severity": severity,
+                "status": "NON_TARGET_BLOCKED" if ai_detection.get("status") in ["NO_VALID_LEAF", "HUMAN_DETECTED", "NON_TARGET_OBJECT"] else "SPRAY_INELIGIBLE",
+                "recommended_treatment": None,
+                "inventory_check": {"available": False, "reason": "Target is not verified as a valid diseased crop leaf; spraying locked out."},
+                "approval_required": False,
+                "approved": False,
+                "spray_permitted": False,
+                "action_guidance": ai_detection.get("display_name") or "Foliage not verified. Chemical application strictly locked out.",
+                "warnings": [ai_detection.get("message") or "Vision pipeline determined frame is ineligible for targeted spray."]
+            }
+
         # 1. Low Confidence Gate
         if confidence < 0.60 or disease == "unknown":
             return {
@@ -113,8 +131,9 @@ class TreatmentDecisionEngine:
             }
 
         # 4. Lookup Verified Treatment in Controlled Database
+        norm_disease = disease.lower().replace(" ", "_").replace("-", "_")
         crop_data = self.database.get("crops", {}).get(crop, {})
-        disease_info = crop_data.get("diseases", {}).get(disease)
+        disease_info = crop_data.get("diseases", {}).get(norm_disease) or crop_data.get("diseases", {}).get(disease)
 
         if not disease_info:
             return {

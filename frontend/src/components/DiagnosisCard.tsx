@@ -25,9 +25,11 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ detection, telemet
     );
   }
 
-  const isLowConfidence = detection.status === 'LOW_CONFIDENCE_REVIEW' || detection.confidence < 0.60;
-  const isHealthy = detection.disease === 'healthy';
-  const healthScore = detection.plant_health_score ?? 100;
+  const isNonTarget = ['NO_VALID_LEAF', 'HUMAN_DETECTED', 'NON_TARGET_OBJECT', 'SOIL_SURFACE_NO_PLANT', 'UNSUPPORTED_CROP', 'LOW_QUALITY'].includes(detection.status);
+  const isHuman = detection.status === 'HUMAN_DETECTED';
+  const isLowConfidence = !isNonTarget && (detection.status === 'LOW_CONFIDENCE' || detection.status === 'LOW_CONFIDENCE_REVIEW' || detection.confidence < 0.60);
+  const isHealthy = !isNonTarget && detection.disease === 'healthy';
+  const healthScore = isNonTarget ? 100 : (detection.plant_health_score ?? 100);
 
   // Real agronomic stress flags from telemetry
   const soilMoisture = telemetry?.soil_moisture?.moisture_pct;
@@ -67,13 +69,35 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ detection, telemet
       <div style={{
         padding: '1rem',
         borderRadius: 'var(--radius-md)',
-        background: isLowConfidence ? 'rgba(245, 158, 11, 0.1)' : isHealthy ? 'rgba(16, 185, 129, 0.1)' : 'rgba(244, 63, 94, 0.1)',
-        border: `1px solid ${isLowConfidence ? 'rgba(245, 158, 11, 0.3)' : isHealthy ? 'rgba(16, 185, 129, 0.3)' : 'rgba(244, 63, 94, 0.3)'}`,
+        background: isHuman
+          ? 'rgba(239, 68, 68, 0.15)'
+          : isNonTarget
+            ? 'rgba(100, 116, 139, 0.15)'
+            : isLowConfidence
+              ? 'rgba(245, 158, 11, 0.1)'
+              : isHealthy
+                ? 'rgba(16, 185, 129, 0.1)'
+                : 'rgba(244, 63, 94, 0.1)',
+        border: `1px solid ${
+          isHuman
+            ? 'rgba(239, 68, 68, 0.4)'
+            : isNonTarget
+              ? 'rgba(100, 116, 139, 0.4)'
+              : isLowConfidence
+                ? 'rgba(245, 158, 11, 0.3)'
+                : isHealthy
+                  ? 'rgba(16, 185, 129, 0.3)'
+                  : 'rgba(244, 63, 94, 0.3)'
+        }`,
         marginBottom: '1rem'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-          {isHealthy ? (
+          {isHuman ? (
+            <AlertTriangle size={22} color="var(--rose-500)" />
+          ) : isHealthy ? (
             <CheckCircle size={22} color="var(--emerald-400)" />
+          ) : isNonTarget ? (
+            <HelpCircle size={22} color="#94a3b8" />
           ) : isLowConfidence ? (
             <HelpCircle size={22} color="var(--amber-400)" />
           ) : (
@@ -84,7 +108,17 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ detection, telemet
               {detection.display_name}
             </div>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>
-              Crop: {detection.crop} • Severity: <strong style={{ color: '#fff' }}>{detection.severity}</strong>
+              {isNonTarget ? (
+                <span>
+                  Vision Filter: <strong style={{ color: isHuman ? 'var(--rose-500)' : 'var(--amber-400)' }}>
+                    {isHuman ? 'SAFETY INTERLOCK ACTIVE' : 'NON-TARGET REJECTED'}
+                  </strong> • Disease Model: <strong style={{ color: '#fff' }}>BYPASSED</strong>
+                </span>
+              ) : (
+                <span>
+                  Crop: {detection.crop} • Severity: <strong style={{ color: '#fff' }}>{detection.severity}</strong>
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -93,38 +127,56 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ detection, telemet
       {/* Metrics Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem', marginBottom: '1rem' }}>
         
-        {/* Plant Health Score */}
+        {/* Plant Health Score / Target Verification */}
         <div style={{ background: 'rgba(0,0,0,0.25)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-            Overall Health Index
+            {isNonTarget ? 'Target Verification' : 'Overall Health Index'}
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.25rem' }}>
-            <span className="mono" style={{ fontSize: '1.5rem', fontWeight: 800, color: scoreColor }}>
-              {healthScore}
-            </span>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>/100</span>
+            {isNonTarget ? (
+              <span className="mono" style={{ fontSize: '1.1rem', fontWeight: 800, color: isHuman ? 'var(--rose-500)' : 'var(--amber-400)' }}>
+                {isHuman ? 'HUMAN SAFEGUARD' : 'REJECTED (NON-LEAF)'}
+              </span>
+            ) : (
+              <>
+                <span className="mono" style={{ fontSize: '1.5rem', fontWeight: 800, color: scoreColor }}>
+                  {healthScore}
+                </span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>/100</span>
+              </>
+            )}
           </div>
         </div>
 
-        {/* AI Confidence */}
+        {/* AI Confidence / Disease Model Status */}
         <div style={{ background: 'rgba(0,0,0,0.25)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-            Model Confidence
+            {isNonTarget ? 'Pathology Classifier' : 'Model Confidence'}
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.25rem' }}>
-            <span className="mono" style={{ fontSize: '1.5rem', fontWeight: 800, color: isLowConfidence ? 'var(--amber-400)' : '#fff' }}>
-              {(detection.confidence * 100).toFixed(1)}%
-            </span>
+            {isNonTarget ? (
+              <span className="mono" style={{ fontSize: '1.05rem', fontWeight: 700, color: '#94a3b8' }}>
+                STANDBY (LOCKED)
+              </span>
+            ) : (
+              <span className="mono" style={{ fontSize: '1.5rem', fontWeight: 800, color: isLowConfidence ? 'var(--amber-400)' : '#fff' }}>
+                {(detection.confidence * 100).toFixed(1)}%
+              </span>
+            )}
           </div>
         </div>
 
-        {/* Affected Foliage Ratio */}
+        {/* Affected Foliage Ratio / Spray Eligibility */}
         <div style={{ background: 'rgba(0,0,0,0.25)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-            Lesion Coverage
+            {isNonTarget ? 'Target Spray Valve' : 'Lesion Coverage'}
           </div>
-          <div className="mono" style={{ fontSize: '1.1rem', fontWeight: 700 }}>
-            {(detection.affected_area * 100).toFixed(1)}%
+          <div className="mono" style={{ fontSize: isNonTarget ? '1rem' : '1.1rem', fontWeight: 700, color: isNonTarget ? 'var(--rose-500)' : '#fff' }}>
+            {isNonTarget ? (
+              'DISARMED (SAFE)'
+            ) : (
+              `${(detection.affected_area * 100).toFixed(1)}%`
+            )}
           </div>
         </div>
 
