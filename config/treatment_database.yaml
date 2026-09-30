@@ -129,6 +129,187 @@ crops:
               max_humidity_pct: 85.0
               min_soil_moisture_pct: 20.0
 
+      leaf_mold:
+        display_name: "Leaf Mold"
+        pathogen: "Passalora fulva / Cladosporium fulvum (Fungus)"
+        characteristic_symptoms: "Pale green to yellow spots on upper leaf surface, olive-green velvety mold on underside."
+        severity_tiers:
+          mild:
+            description: "Chlorotic spots on upper side with faint velvety growth on lower side"
+            recommended_treatment_id: "TRT_COPPER_HYDROXIDE"
+          moderate:
+            description: "Velvety olive-brown fungal growth spreading across mid-canopy"
+            recommended_treatment_id: "TRT_COPPER_HYDROXIDE"
+          severe:
+            description: "Leaves curl, wither, and drop prematurely"
+            recommended_treatment_id: "TRT_COPPER_HYDROXIDE"
+        treatments:
+          - id: "TRT_COPPER_HYDROXIDE"
+            trade_name: "Copper Hydroxide 77% WP"
+            chemical_class: "Inorganic Copper Protectant"
+            target_inventory_code: "TANK_COPPER_FUNGICIDE"
+            active_concentration_gl: 2.0
+            dosage_description: "2.0 grams per Liter of clean water"
+            application_method: "Direct spray on lower leaf surface"
+            pulse_duration_ms: 2500
+            estimated_volume_ml: 40.0
+            spray_pressure_psi: 35
+            re_entry_interval_hours: 48
+            pre_harvest_interval_days: 0
+            safety_notes: "Wear respirator and nitrile gloves."
+            environmental_restrictions:
+              max_temp_c: 32.0
+              max_humidity_pct: 88.0
+              min_soil_moisture_pct: 20.0
+
+      septoria_leaf_spot:
+        display_name: "Septoria Leaf Spot"
+        pathogen: "Septoria lycopersici (Fungus)"
+        characteristic_symptoms: "Numerous small circular lesions with gray/tan centers and dark brown margins with black pycnidia specks."
+        severity_tiers:
+          mild:
+            description: "Scattered circular spots (<3mm) confined to oldest bottom leaves"
+            recommended_treatment_id: "TRT_COPPER_HYDROXIDE"
+          moderate:
+            description: "Multiple coalescing lesions causing leaflet chlorosis and leaf curl"
+            recommended_treatment_id: "TRT_COPPER_HYDROXIDE"
+          severe:
+            description: "Upward canopy defoliation exposing fruit to sunscald"
+            recommended_treatment_id: "TRT_COPPER_HYDROXIDE"
+        treatments:
+          - id: "TRT_COPPER_HYDROXIDE"
+            trade_name: "Copper Hydroxide 77% WP"
+            chemical_class: "Inorganic Protectant"
+            target_inventory_code: "TANK_COPPER_FUNGICIDE"
+            active_concentration_gl: 2.0
+            dosage_description: "2.0 g/L water"
+            application_method: "Downward precision spray coating infected basal foliage"
+            pulse_duration_ms: 2500
+            estimated_volume_ml: 40.0
+            spray_pressure_psi: 35
+            re_entry_interval_hours: 48
+            pre_harvest_interval_days: 0
+            safety_notes: "Apply PPE. Avoid spray drift."
+            environmental_restrictions:
+              max_temp_c: 30.0
+              max_humidity_pct: 90.0
+              min_soil_moisture_pct: 20.0
+
+      spider_mites:
+        display_name: "Two-Spotted Spider Mite"
+        pathogen: "Tetranychus urticae (Arachnid Pest)"
+        characteristic_symptoms: "Fine yellow/white stippling on leaf surface, fine webbing on undersides, leaf bronzing."
+        severity_tiers:
+          mild:
+            description: "Fine yellow stippling visible on upper leaf surfaces of a few leaves"
+            recommended_treatment_id: "TRT_BIO_NEEM"
+          moderate:
+            description: "Dense speckling, fine webbing visible under leaves"
+            recommended_treatment_id: "TRT_BIO_NEEM"
+          severe:
+            description: "Extensive webbing covering leaf clusters, bronzing, leaf desiccation"
+            recommended_treatment_id: "TRT_BIO_NEEM"
+        treatments:
+          - id: "TRT_BIO_NEEM"
+            trade_name: "Cold-Pressed Organic Bio-Neem Solution"
+            chemical_class: "Bio-Miticide & Insect Growth Regulator"
+            target_inventory_code: "TANK_NEEM_ORGANIC"
+            active_concentration_gl: 4.0
+            dosage_description: "4.0 mL per Liter of water"
+            application_method: "High-pressure fine misting targeted directly under leaf canopies"
+            pulse_duration_ms: 3000
+            estimated_volume_ml: 50.0
+            spray_pressure_psi: 30
+            re_entry_interval_hours: 4
+            pre_harvest_interval_days: 1
+            safety_notes: "Apply during early morning or evening to protect pollinators."
+            environmental_restrictions:
+              max_temp_c: 30.0
+              max_humidity_pct: 92.0
+              min_soil_moisture_pct: 20.0
+
+      target_spot:
+        display_name: "Target Spot"
+        pathogen: "Corynespora cassiicola (Fungus)"
+        characteristic_symptoms: "Small brown circular lesions with light brown centers and dark margins resembling target rings."
+        severity_tiers:
+          mild:
+            description: "Pinpoint brown specks on upper canopy foliage"
+            recommended_treatment_id: "TRT_COPPER_HYDROXIDE"
+          moderate:
+            description: "Target lesions expanding to 5-10mm with distinct concentric zones"
+            recommended_treatment_id: "TRT_COPPER_HYDROXIDE"
+          severe:
+            description: "Leaf drop and sunken circular lesions on mature green/red fruit"
+            recommended_treatment_id: "TRT_COPPER_HYDROXIDE"
+        treatments:
+          - id: "TRT_COPPER_HYDROXIDE"
+            trade_name: "Copper Hydroxide 77% WP"
+            chemical_class: "Inorganic Protectant"
+            target_inventory_code: "TANK_COPPER_FUNGICIDE"
+            active_concentration_gl: 2.0
+            dosage_description: "2.0 g/L water"
+            application_method: "Uniform canopy spray"
+            pulse_duration_ms: 2500
+            estimated_volume_ml: 40.0
+            spray_pressure_psi: 35
+            re_entry_interval_hours: 48
+            pre_harvest_interval_days: 0
+            safety_notes: "Full PPE required."
+            environmental_restrictions:
+              max_temp_c: 32.0
+              max_humidity_pct: 88.0
+              min_soil_moisture_pct: 20.0
+
+      yellow_leaf_curl_virus:
+        display_name: "Tomato Yellow Leaf Curl Virus (TYLCV)"
+        pathogen: "Tomato Yellow Leaf Curl Virus (Begomovirus)"
+        characteristic_symptoms: "Severe upward leaf curling, cup-shaped leaflets, interveinal chlorosis, stunted bushy plant growth."
+        severity_tiers:
+          mild:
+            description: "Subtle upward cupping of youngest apical leaves with slight pale margin"
+            recommended_treatment_id: "TRT_BIO_NEEM"
+          moderate:
+            description: "Pronounced leaf curling, reduced leaflet size, noticeable plant stunting"
+            recommended_treatment_id: "TRT_BIO_NEEM"
+          severe:
+            description: "Severe bushy dwarfism, complete flower abscission, zero fruit set"
+            recommended_treatment_id: "TRT_BIO_NEEM"
+        treatments:
+          - id: "TRT_BIO_NEEM"
+            trade_name: "Cold-Pressed Organic Bio-Neem Solution (Vector Suppression)"
+            chemical_class: "Bio-Insecticide (Whitefly Vector Control)"
+            target_inventory_code: "TANK_NEEM_ORGANIC"
+            active_concentration_gl: 5.0
+            dosage_description: "5.0 mL per Liter of water"
+            application_method: "Foliar spray targeting whitefly nymphs on leaf undersides"
+            pulse_duration_ms: 3000
+            estimated_volume_ml: 48.0
+            spray_pressure_psi: 30
+            re_entry_interval_hours: 4
+            pre_harvest_interval_days: 1
+            safety_notes: "Viruses cannot be cured chemically; primary intervention is vector control."
+            environmental_restrictions:
+              max_temp_c: 30.0
+              max_humidity_pct: 92.0
+              min_soil_moisture_pct: 20.0
+
+      mosaic_virus:
+        display_name: "Tomato Mosaic Virus (ToMV)"
+        pathogen: "Tomato mosaic tobamovirus"
+        characteristic_symptoms: "Light and dark green mottling (mosaic pattern) on leaves, leaf distortion (shoestring or fern-like look)."
+        severity_tiers:
+          mild:
+            description: "Faint mosaic pattern on upper leaflets with slight leaf crinkling"
+            recommended_treatment_id: null
+          moderate:
+            description: "Obvious mottling, reduced leaf blade area"
+            recommended_treatment_id: null
+          severe:
+            description: "Severe 'fern-leaf' distortion, systemic stunting"
+            recommended_treatment_id: null
+        treatments: []
+
       healthy:
         display_name: "Healthy Foliage"
         pathogen: "None (Optimal Agronomic Vigor)"
@@ -136,6 +317,130 @@ crops:
         severity_tiers:
           mild: { description: "Normal", recommended_treatment_id: null }
         treatments: []
+
+  pepper:
+    scientific_name: "Capsicum annuum"
+    common_name: "Pepper (Bell)"
+    diseases:
+      bacterial_spot:
+        display_name: "Bacterial Spot"
+        pathogen: "Xanthomonas campestris pv. vesicatoria"
+        characteristic_symptoms: "Water-soaked circular lesions turning brown on leaves and fruit, causing yellowing and leaf drop."
+        severity_tiers:
+          mild:
+            description: "Scattered small (<3mm) necrotic spots on lower canopy leaves"
+            recommended_treatment_id: "TRT_COPPER_HYDROXIDE"
+          moderate:
+            description: "Lesions expanding across 15-30% of foliage with localized yellowing"
+            recommended_treatment_id: "TRT_COPPER_HYDROXIDE"
+          severe:
+            description: "Widespread blight, partial defoliation, stem lesions"
+            recommended_treatment_id: "TRT_COPPER_HYDROXIDE"
+        treatments:
+          - id: "TRT_COPPER_HYDROXIDE"
+            trade_name: "Copper Hydroxide 77% WP"
+            chemical_class: "Inorganic Copper Protectant"
+            target_inventory_code: "TANK_COPPER_FUNGICIDE"
+            active_concentration_gl: 2.0
+            dosage_description: "2.0 g/L water"
+            application_method: "Precision foliar misting targeting under-canopy"
+            pulse_duration_ms: 2500
+            estimated_volume_ml: 40.0
+            spray_pressure_psi: 35
+            re_entry_interval_hours: 48
+            pre_harvest_interval_days: 0
+            safety_notes: "Wear respirator and gloves."
+            environmental_restrictions:
+              max_temp_c: 32.0
+              max_humidity_pct: 88.0
+              min_soil_moisture_pct: 20.0
+
+      healthy:
+        display_name: "Healthy Pepper Foliage"
+        pathogen: "None"
+        characteristic_symptoms: "Vigorous upright dark green foliage, no spotting or curling."
+        severity_tiers:
+          mild: { description: "Normal", recommended_treatment_id: null }
+        treatments: []
+
+  potato:
+    scientific_name: "Solanum tuberosum"
+    common_name: "Potato"
+    diseases:
+      early_blight:
+        display_name: "Early Blight"
+        pathogen: "Alternaria solani (Fungus)"
+        characteristic_symptoms: "Dark brown target-like spots with distinct concentric rings on older lower leaves."
+        severity_tiers:
+          mild:
+            description: "Few localized target-spot lesions restricted to basal foliage"
+            recommended_treatment_id: "TRT_COPPER_HYDROXIDE"
+          moderate:
+            description: "Concentric rings spreading up mid-canopy; chlorotic halo around spots"
+            recommended_treatment_id: "TRT_COPPER_HYDROXIDE"
+          severe:
+            description: "Leaf desiccation, early senescence"
+            recommended_treatment_id: "TRT_COPPER_HYDROXIDE"
+        treatments:
+          - id: "TRT_COPPER_HYDROXIDE"
+            trade_name: "Copper Hydroxide 77% WP"
+            chemical_class: "Inorganic Protectant"
+            target_inventory_code: "TANK_COPPER_FUNGICIDE"
+            active_concentration_gl: 2.0
+            dosage_description: "2.0 g/L water"
+            application_method: "Downward cone spray targeting lower canopy leaves"
+            pulse_duration_ms: 2500
+            estimated_volume_ml: 40.0
+            spray_pressure_psi: 35
+            re_entry_interval_hours: 48
+            pre_harvest_interval_days: 0
+            safety_notes: "Full PPE required."
+            environmental_restrictions:
+              max_temp_c: 32.0
+              max_humidity_pct: 88.0
+              min_soil_moisture_pct: 20.0
+
+      late_blight:
+        display_name: "Late Blight"
+        pathogen: "Phytophthora infestans (Oomycete)"
+        characteristic_symptoms: "Water-soaked irregular pale green/brown lesions turning dark brown with white fungal down on lower surface in humid weather."
+        severity_tiers:
+          mild:
+            description: "Water-soaked spots at leaf tips and margins under high moisture"
+            recommended_treatment_id: "TRT_CYMOXANIL_MANCOZEB"
+          moderate:
+            description: "Rapid lesion expansion, stem rot, white sporulation visible on underside"
+            recommended_treatment_id: "TRT_CYMOXANIL_MANCOZEB"
+          severe:
+            description: "Complete collapse of plant canopy; rotting tubers"
+            recommended_treatment_id: "TRT_CYMOXANIL_MANCOZEB"
+        treatments:
+          - id: "TRT_CYMOXANIL_MANCOZEB"
+            trade_name: "Cymoxanil 8% + Mancozeb 64% WP"
+            chemical_class: "Curative & Contact Multi-Site Protectant"
+            target_inventory_code: "TANK_COPPER_FUNGICIDE"
+            active_concentration_gl: 2.5
+            dosage_description: "2.5 g/L water"
+            application_method: "High-pressure fine cone nozzle delivering complete lower leaf coverage"
+            pulse_duration_ms: 3500
+            estimated_volume_ml: 55.0
+            spray_pressure_psi: 40
+            re_entry_interval_hours: 48
+            pre_harvest_interval_days: 7
+            safety_notes: "Full PPE required."
+            environmental_restrictions:
+              max_temp_c: 28.0
+              max_humidity_pct: 95.0
+              min_soil_moisture_pct: 20.0
+
+      healthy:
+        display_name: "Healthy Potato Foliage"
+        pathogen: "None"
+        characteristic_symptoms: "Lush pinnate leaves without spotting, curling, or water soaking."
+        severity_tiers:
+          mild: { description: "Normal", recommended_treatment_id: null }
+        treatments: []
+
 
 sensor_correlation_rules:
   # Rule: Prevent treating nitrogen deficiency as a fungal blight

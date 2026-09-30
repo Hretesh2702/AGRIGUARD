@@ -1,0 +1,427 @@
+{
+  "metadata": {
+    "version": "2.0.0",
+    "standard": "ICAR / USDA-ARS / UC-IPM Integrated Crop Protection Guidelines",
+    "last_reviewed": "2026-09-30",
+    "safety_disclaimer": "All treatments are prototype reference guidelines and require certified agronomist/farmer validation before tank mixing or field dispersion."
+  },
+  "diseases": {
+    "Pepper__bell___Bacterial_spot": {
+      "crop": "Pepper (Bell)",
+      "disease": "Bacterial Spot",
+      "scientific_name": "Xanthomonas campestris pv. vesicatoria",
+      "pathogen_type": "Bacterial",
+      "symptoms": "Water-soaked circular lesions turning brown on leaves and fruit, causing yellowing and premature leaf drop.",
+      "severity_levels": {
+        "mild": "Scattered small (<3mm) necrotic spots on lower canopy leaves.",
+        "moderate": "Lesions expanding across 15-30% of foliage with localized yellowing.",
+        "severe": "Widespread blight, partial defoliation, lesion formation on stems/pods."
+      },
+      "treatments": [
+        {
+          "treatment_id": "TRT_PEP_BS_COPPER_MANCOZEB",
+          "treatment": "Fixed Copper Hydroxide (53.8%) + Mancozeb (75% WP)",
+          "category": "Bactericide / Protective Fungicide Complex",
+          "availability_key": "TANK_COPPER_FUNGICIDE",
+          "configured_dose_reference": "2.0 g/L Copper Hydroxide + 2.0 g/L Mancozeb",
+          "spray_duration_ms": 2500,
+          "spray_volume_est_ml": 40,
+          "application_method": "Precision foliar misting targeting under-canopy and infected leaf clusters",
+          "safety_notes": "Wear respirator, nitrile gloves, and eye protection. 48-hour re-entry interval.",
+          "notes": "Fixed copper mixed with mancozeb improves efficacy against copper-tolerant Xanthomonas strains."
+        },
+        {
+          "treatment_id": "TRT_PEP_BS_BACILLUS",
+          "treatment": "Bacillus subtilis / amyloliquefaciens (Bio-Bactericide)",
+          "category": "Organic Biological Control",
+          "availability_key": "TANK_NEEM_ORGANIC",
+          "configured_dose_reference": "2.5 mL/L aqueous suspension",
+          "spray_duration_ms": 3000,
+          "spray_volume_est_ml": 45,
+          "application_method": "Preventative protective spray during high humidity periods",
+          "safety_notes": "Biological formulation. Zero pre-harvest interval; safe for pollinators.",
+          "notes": "Colonizes leaf surface to competitively exclude pathogenic bacteria."
+        }
+      ]
+    },
+    "Pepper__bell___healthy": {
+      "crop": "Pepper (Bell)",
+      "disease": "Healthy",
+      "scientific_name": "N/A",
+      "pathogen_type": "None",
+      "symptoms": "Vigorous green foliage with upright posture, uniform coloration, and absence of necrotic spotting.",
+      "severity_levels": {
+        "none": "Zero pathology detected. Plant exhibits optimal physiological vigor."
+      },
+      "treatments": []
+    },
+    "Potato___Early_blight": {
+      "crop": "Potato",
+      "disease": "Early Blight",
+      "scientific_name": "Alternaria solani",
+      "pathogen_type": "Fungal",
+      "symptoms": "Dark brown, target-like spots with distinct concentric rings on older lower leaves.",
+      "severity_levels": {
+        "mild": "Few localized target-spot lesions restricted to basal foliage.",
+        "moderate": "Concentric rings spreading up mid-canopy; chlorotic halo around spots.",
+        "severe": "Leaf desiccation, early senescence, potential tuber infection via spore washdown."
+      },
+      "treatments": [
+        {
+          "treatment_id": "TRT_POT_EB_CHLOROTHALONIL",
+          "treatment": "Chlorothalonil (75% WP)",
+          "category": "Protectant Foliar Fungicide",
+          "availability_key": "TANK_COPPER_FUNGICIDE",
+          "configured_dose_reference": "2.2 g/L water",
+          "spray_duration_ms": 2500,
+          "spray_volume_est_ml": 40,
+          "application_method": "Downward cone spray targeting lower canopy leaves before spore spread",
+          "safety_notes": "Toxic to fish. 48-hour re-entry interval. Apply PPE (Category I/II safety).",
+          "notes": "Standard multisite contact protectant; apply at first visual sign of concentric lesions."
+        },
+        {
+          "treatment_id": "TRT_POT_EB_AZOXYSTROBIN",
+          "treatment": "Azoxystrobin (23% SC, Strobilurin)",
+          "category": "Translaminar / Systemic Fungicide",
+          "availability_key": "TANK_COPPER_FUNGICIDE",
+          "configured_dose_reference": "1.0 mL/L water",
+          "spray_duration_ms": 2000,
+          "spray_volume_est_ml": 35,
+          "application_method": "Targeted misting with fine droplet spectrum",
+          "safety_notes": "Rotate with non-Group 11 fungicides to prevent fungal resistance.",
+          "notes": "Provides translaminar movement to inhibit fungal mitochondrial respiration."
+        }
+      ]
+    },
+    "Potato___Late_blight": {
+      "crop": "Potato",
+      "disease": "Late Blight",
+      "scientific_name": "Phytophthora infestans",
+      "pathogen_type": "Oomycete",
+      "symptoms": "Water-soaked irregular pale green/brown lesions turning dark brown with white fungal down on lower surface in humid weather.",
+      "severity_levels": {
+        "mild": "Water-soaked spots at leaf tips and margins under high moisture.",
+        "moderate": "Rapid lesion expansion, stem rot, white sporulation visible on underside.",
+        "severe": "Complete collapse of plant canopy; tubers rot with firm dry brown necrosis."
+      },
+      "treatments": [
+        {
+          "treatment_id": "TRT_POT_LB_CYMOXANIL_MANCOZEB",
+          "treatment": "Cymoxanil (8%) + Mancozeb (64% WP)",
+          "category": "Curative & Protective Oomyceticide",
+          "availability_key": "TANK_COPPER_FUNGICIDE",
+          "configured_dose_reference": "2.5 g/L water",
+          "spray_duration_ms": 3500,
+          "spray_volume_est_ml": 60,
+          "application_method": "Comprehensive leaf wetting coating both upper and lower leaf surfaces",
+          "safety_notes": "Emergency intervention required immediately upon detection. PPE mandatory.",
+          "notes": "Cymoxanil provides penetrant kickback activity within 48 hours of infection."
+        },
+        {
+          "treatment_id": "TRT_POT_LB_DIMETHOMORPH",
+          "treatment": "Dimethomorph (50% WP)",
+          "category": "Cell-Wall Synthesis Inhibitor",
+          "availability_key": "TANK_COPPER_FUNGICIDE",
+          "configured_dose_reference": "1.5 g/L water",
+          "spray_duration_ms": 3000,
+          "spray_volume_est_ml": 50,
+          "application_method": "Targeted foliar application under overcast or high humidity conditions",
+          "safety_notes": "Strict 7-day pre-harvest interval.",
+          "notes": "Inhibits sporangial germination and oomycete cell-wall formation."
+        }
+      ]
+    },
+    "Potato___healthy": {
+      "crop": "Potato",
+      "disease": "Healthy",
+      "scientific_name": "N/A",
+      "pathogen_type": "None",
+      "symptoms": "Lush pinnate leaves without spotting, curling, or water soaking.",
+      "severity_levels": {
+        "none": "Healthy foliage. Zero intervention required."
+      },
+      "treatments": []
+    },
+    "Tomato_Bacterial_spot": {
+      "crop": "Tomato",
+      "disease": "Bacterial Spot",
+      "scientific_name": "Xanthomonas perforans / gardneri",
+      "pathogen_type": "Bacterial",
+      "symptoms": "Small greasy/water-soaked spots that become angular and purplish-brown with yellow haloes.",
+      "severity_levels": {
+        "mild": "Scattered circular spots (<2mm) with yellow borders on lower leaves.",
+        "moderate": "Spots coalescing, causing ragged tear holes and yellowing of leaflets.",
+        "severe": "Defoliation exposing fruit to sunscald; scab-like raised lesions on fruit."
+      },
+      "treatments": [
+        {
+          "treatment_id": "TRT_TOM_BS_COPPER_MANCOZEB",
+          "treatment": "Copper Oxychloride (50% WP) + Mancozeb (75% WP)",
+          "category": "Bactericidal / Fungicidal Protective Complex",
+          "availability_key": "TANK_COPPER_FUNGICIDE",
+          "configured_dose_reference": "2.0 g/L Copper + 2.0 g/L Mancozeb",
+          "spray_duration_ms": 2500,
+          "spray_volume_est_ml": 40,
+          "application_method": "Precision foliar spray under calm wind (<10 km/h) conditions",
+          "safety_notes": "Avoid spraying during peak midday heat to prevent chemical scorch.",
+          "notes": "Synergistic copper-mancozeb combination neutralizes copper-resistant strains."
+        }
+      ]
+    },
+    "Tomato_Early_blight": {
+      "crop": "Tomato",
+      "disease": "Early Blight",
+      "scientific_name": "Alternaria solani",
+      "pathogen_type": "Fungal",
+      "symptoms": "Concentric rings with target board pattern on older leaves, progressing upward.",
+      "severity_levels": {
+        "mild": "Basal leaf lesions (<5mm) with dark concentric ridges.",
+        "moderate": "Chlorosis around lesions, spreading into mid-canopy foliage.",
+        "severe": "Extensive defoliation exceeding 40% of canopy, collar rot on stems."
+      },
+      "treatments": [
+        {
+          "treatment_id": "TRT_TOM_EB_COPPER_HYDROXIDE",
+          "treatment": "Copper Hydroxide (77% WP)",
+          "category": "Protectant Fungicide",
+          "availability_key": "TANK_COPPER_FUNGICIDE",
+          "configured_dose_reference": "2.0 g/L water",
+          "spray_duration_ms": 2500,
+          "spray_volume_est_ml": 40,
+          "application_method": "Precision misting directed at lower foliage clusters",
+          "safety_notes": "Respirator and protective gloves required. 48-hour re-entry interval.",
+          "notes": "Multisite fungal spore protectant proven against Alternaria."
+        },
+        {
+          "treatment_id": "TRT_TOM_EB_NEEM",
+          "treatment": "Cold-Pressed Bio-Neem Oil (Azadirachtin 0.03%)",
+          "category": "Organic Bio-Fungicide",
+          "availability_key": "TANK_NEEM_ORGANIC",
+          "configured_dose_reference": "5.0 mL/L water",
+          "spray_duration_ms": 3000,
+          "spray_volume_est_ml": 50,
+          "application_method": "Targeted evening misting on early symptomatic leaves",
+          "safety_notes": "Organic certified. Safe for beneficial pollinators in evening applications.",
+          "notes": "Contains limonoids that disrupt fungal germination and sporulation."
+        }
+      ]
+    },
+    "Tomato_Late_blight": {
+      "crop": "Tomato",
+      "disease": "Late Blight",
+      "scientific_name": "Phytophthora infestans",
+      "pathogen_type": "Oomycete",
+      "symptoms": "Water-soaked irregular grayish-green lesions turning dark brown with white mold on lower surface.",
+      "severity_levels": {
+        "mild": "Water-soaked patches at leaf margins following moist/rainy periods.",
+        "moderate": "Rapidly expanding lesions, brown petioles, white sporulation underneath.",
+        "severe": "Canopy collapse, dark sunken lesions on green and ripening tomatoes."
+      },
+      "treatments": [
+        {
+          "treatment_id": "TRT_TOM_LB_CYMOXANIL_MANCOZEB",
+          "treatment": "Cymoxanil (8%) + Mancozeb (64% WP)",
+          "category": "Translaminar / Protectant Blend",
+          "availability_key": "TANK_COPPER_FUNGICIDE",
+          "configured_dose_reference": "2.5 g/L water",
+          "spray_duration_ms": 3500,
+          "spray_volume_est_ml": 60,
+          "application_method": "Full-coverage downward and horizontal nozzle misting",
+          "safety_notes": "Critical aggressive disease. Immediate quarantine and spray required.",
+          "notes": "Curative translaminar activity arrests active mycelial growth."
+        }
+      ]
+    },
+    "Tomato_Leaf_Mold": {
+      "crop": "Tomato",
+      "disease": "Leaf Mold",
+      "scientific_name": "Passalora fulva (Cladosporium fulvum)",
+      "pathogen_type": "Fungal",
+      "symptoms": "Pale green or yellow spots on the upper leaf surface; olive-green to brown velvety mold on lower surface.",
+      "severity_levels": {
+        "mild": "Chlorotic spots on upper side with faint velvety growth on lower side.",
+        "moderate": "Velvety olive-brown fungal growth spreading across mid-canopy.",
+        "severe": "Leaves curl, wither, and drop prematurely, severely reducing yield."
+      },
+      "treatments": [
+        {
+          "treatment_id": "TRT_TOM_LM_COPPER_SULFATE",
+          "treatment": "Tribasic Copper Sulfate (53% WP)",
+          "category": "Fungicide Protectant",
+          "availability_key": "TANK_COPPER_FUNGICIDE",
+          "configured_dose_reference": "2.0 g/L water",
+          "spray_duration_ms": 2500,
+          "spray_volume_est_ml": 40,
+          "application_method": "Spray directed at underside of lower and middle leaves",
+          "safety_notes": "Ensure greenhouse/field airflow exceeds 15% ventilation.",
+          "notes": "Reduces spore germination in relative humidity above 85%."
+        }
+      ]
+    },
+    "Tomato_Septoria_leaf_spot": {
+      "crop": "Tomato",
+      "disease": "Septoria Leaf Spot",
+      "scientific_name": "Septoria lycopersici",
+      "pathogen_type": "Fungal",
+      "symptoms": "Numerous small circular lesions with gray/tan centers and dark brown margins, with tiny black fruiting bodies (pycnidia).",
+      "severity_levels": {
+        "mild": "Scattered circular spots (<3mm) confined to oldest bottom leaves.",
+        "moderate": "Multiple coalescing lesions causing leaflet chlorosis and leaf curl.",
+        "severe": "Upward canopy defoliation exposing fruit to sunscald."
+      },
+      "treatments": [
+        {
+          "treatment_id": "TRT_TOM_SEPT_CHLOROTHALONIL",
+          "treatment": "Chlorothalonil (75% WP)",
+          "category": "Broad-Spectrum Contact Fungicide",
+          "availability_key": "TANK_COPPER_FUNGICIDE",
+          "configured_dose_reference": "2.2 g/L water",
+          "spray_duration_ms": 2500,
+          "spray_volume_est_ml": 40,
+          "application_method": "Downward precision spray coating infected basal foliage",
+          "safety_notes": "Do not exceed 4 applications per season to protect soil biome.",
+          "notes": "Directly halts Septoria pycnidiospore germination on leaf surface."
+        }
+      ]
+    },
+    "Tomato_Spider_mites_Two_spotted_spider_mite": {
+      "crop": "Tomato",
+      "disease": "Two-Spotted Spider Mite",
+      "scientific_name": "Tetranychus urticae",
+      "pathogen_type": "Arachnid Pest",
+      "symptoms": "Yellow or white stippling (speckling) on leaf surface, fine silken webbing on undersides, bronzing.",
+      "severity_levels": {
+        "mild": "Fine yellow stippling visible on upper leaf surfaces of a few leaves.",
+        "moderate": "Dense speckling, fine webbing visible under leaves and at petiole nodes.",
+        "severe": "Extensive webbing covering leaf clusters, bronzing, leaf desiccation."
+      },
+      "treatments": [
+        {
+          "treatment_id": "TRT_TOM_SM_NEEM_PDI",
+          "treatment": "Cold-Pressed Bio-Neem Oil (Azadirachtin 1% EC)",
+          "category": "Bio-Miticide / Insect Growth Regulator",
+          "availability_key": "TANK_NEEM_ORGANIC",
+          "configured_dose_reference": "3.5 mL/L water",
+          "spray_duration_ms": 3000,
+          "spray_volume_est_ml": 50,
+          "application_method": "High-pressure fine misting targeted directly under leaf canopies",
+          "safety_notes": "Apply during early morning or evening to prevent phototoxic scorching.",
+          "notes": "Suffocates spider mite nymphs and disrupts adult reproductive egg-laying."
+        },
+        {
+          "treatment_id": "TRT_TOM_SM_SPIROMESIFEN",
+          "treatment": "Spiromesifen (22.9% SC, Lipid Synthesis Inhibitor)",
+          "category": "Selective Acaricide / Miticide",
+          "availability_key": "TANK_COPPER_FUNGICIDE",
+          "configured_dose_reference": "0.8 mL/L water",
+          "spray_duration_ms": 2000,
+          "spray_volume_est_ml": 30,
+          "application_method": "Precision spray on infested patches",
+          "safety_notes": "Follow strict 3-day harvest interval.",
+          "notes": "Highly effective against mite juvenile stages and mite egg hatching."
+        }
+      ]
+    },
+    "Tomato__Target_Spot": {
+      "crop": "Tomato",
+      "disease": "Target Spot",
+      "scientific_name": "Corynespora cassiicola",
+      "pathogen_type": "Fungal",
+      "symptoms": "Small brown circular lesions with light brown centers and dark brown margins, resembling a target.",
+      "severity_levels": {
+        "mild": "Pinpoint brown specks on upper canopy foliage.",
+        "moderate": "Target lesions expanding to 5-10mm with distinct concentric zones.",
+        "severe": "Leaf drop and sunken circular lesions on mature green/red fruit."
+      },
+      "treatments": [
+        {
+          "treatment_id": "TRT_TOM_TS_PYRACLOSTROBIN",
+          "treatment": "Pyraclostrobin (20% WG) / Boscalid blend",
+          "category": "Systemic Broad-Spectrum Fungicide",
+          "availability_key": "TANK_COPPER_FUNGICIDE",
+          "configured_dose_reference": "1.5 g/L water",
+          "spray_duration_ms": 2500,
+          "spray_volume_est_ml": 40,
+          "application_method": "Uniform canopy spray with fine mist cone nozzle",
+          "safety_notes": "Rotate with multi-site contact fungicides to manage resistance.",
+          "notes": "Excellent translaminar protection against Corynespora target spot."
+        }
+      ]
+    },
+    "Tomato__Tomato_YellowLeaf__Curl_Virus": {
+      "crop": "Tomato",
+      "disease": "Tomato Yellow Leaf Curl Virus (TYLCV)",
+      "scientific_name": "Tomato Yellow Leaf Curl Virus (Begomovirus)",
+      "pathogen_type": "Viral (Vector: Whitefly Bemisia tabaci)",
+      "symptoms": "Severe upward leaf curling, cup-shaped leaflets, interveinal chlorosis, stunted bushy plant growth.",
+      "severity_levels": {
+        "mild": "Subtle upward cupping of youngest apical leaves with slight pale margin.",
+        "moderate": "Pronounced leaf curling, reduced leaflet size, noticeable plant stunting.",
+        "severe": "Severe bushy dwarfism, complete flower abscission, zero fruit set."
+      },
+      "treatments": [
+        {
+          "treatment_id": "TRT_TOM_TYLCV_VECTOR_NEEM",
+          "treatment": "Azadirachtin Bio-Insecticide (Vector Management)",
+          "category": "Vector Suppression (Whitefly Control)",
+          "availability_key": "TANK_NEEM_ORGANIC",
+          "configured_dose_reference": "4.0 mL/L water",
+          "spray_duration_ms": 3000,
+          "spray_volume_est_ml": 50,
+          "application_method": "Foliar spray targeting whitefly nymphs on leaf undersides",
+          "safety_notes": "Viruses cannot be cured chemically; primary intervention is vector control.",
+          "notes": "Reduces whitefly vector populations to prevent secondary plant-to-plant transmission."
+        },
+        {
+          "treatment_id": "TRT_TOM_TYLCV_ROGUING",
+          "treatment": "Physical Roguing & Field Sanitation",
+          "category": "Cultural Management Intervention",
+          "availability_key": "TANK_MANUAL_ACTION",
+          "configured_dose_reference": "Immediate physical extraction and bagging",
+          "spray_duration_ms": 0,
+          "spray_volume_est_ml": 0,
+          "application_method": "Manually remove severely infected plants in sealed plastic bags",
+          "safety_notes": "Burn or deeply bury infected residues away from the field perimeter.",
+          "notes": "Essential to eliminate primary virus reservoirs in the crop rows."
+        }
+      ]
+    },
+    "Tomato__Tomato_mosaic_virus": {
+      "crop": "Tomato",
+      "disease": "Tomato Mosaic Virus (ToMV)",
+      "scientific_name": "Tomato mosaic tobamovirus",
+      "pathogen_type": "Viral (Mechanical / Seed Transmission)",
+      "symptoms": "Light and dark green mottling (mosaic pattern) on leaves, leaf distortion (shoestring or fern-like look).",
+      "severity_levels": {
+        "mild": "Faint mosaic pattern on upper leaflets with slight leaf crinkling.",
+        "moderate": "Obvious mottling, reduced leaf blade area, slight fruit internal browning.",
+        "severe": "Severe 'fern-leaf' distortion, systemic stunting, unmarketable fruit."
+      },
+      "treatments": [
+        {
+          "treatment_id": "TRT_TOM_TMV_SANITATION",
+          "treatment": "Disinfectant Tool Wash (20% Non-Fat Dry Milk or 10% TSP)",
+          "category": "Biosecurity / Sanitation Barrier",
+          "availability_key": "TANK_MANUAL_ACTION",
+          "configured_dose_reference": "200 g/L non-fat dry milk solution",
+          "spray_duration_ms": 0,
+          "spray_volume_est_ml": 0,
+          "application_method": "Dip robotic pruning arms and tools between plants",
+          "safety_notes": "Mechanical transmission is extremely rapid via contact and equipment.",
+          "notes": "Milk proteins inactivate the stable viral capsid protein coat on contact."
+        }
+      ]
+    },
+    "Tomato_healthy": {
+      "crop": "Tomato",
+      "disease": "Healthy",
+      "scientific_name": "N/A",
+      "pathogen_type": "None",
+      "symptoms": "Lush compound leaves, vibrant green foliage, vigorous apical shoot growth.",
+      "severity_levels": {
+        "none": "Healthy tomato foliage. Zero chemical intervention required."
+      },
+      "treatments": []
+    }
+  }
+}

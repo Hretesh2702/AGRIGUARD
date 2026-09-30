@@ -1,0 +1,31 @@
+{
+  "status": "PASSED",
+  "tests_run": 5,
+  "tests_passed": 5,
+  "disease_test": {
+    "input": "Potato___Early_blight",
+    "prediction": "Early Blight",
+    "confidence": 0.998,
+    "severity": "Mild (Prototype Estimated Severity)",
+    "health_score": 67
+  },
+  "healthy_test": {
+    "prediction": "Healthy",
+    "confidence": 0.999,
+    "health_score": 99
+  },
+  "unknown_gate_test": {
+    "input": "random_noise_224x224",
+    "status": "UNKNOWN",
+    "confidence": 0.118,
+    "message": "Unknown / Low Confidence \u2013 Please Inspect Manually"
+  },
+  "latency_profile": {
+    "device": "cpu",
+    "samples": 100,
+    "mean_ms": 68.65,
+    "median_ms": 66.43,
+    "p95_ms": 96.0,
+    "throughput_fps": 14.57
+  }
+}

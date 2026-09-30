@@ -43,10 +43,10 @@ yarn-error.log*
 *.db-shm
 *.log
 
-# Operating System & IDE
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
-*.swp
-*.swo
+# Large Datasets & Scratch Files
+PlantVillage/
+scratch/
+runs/*.json
+models/agriguard_last.pth
+
+

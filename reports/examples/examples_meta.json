@@ -1,0 +1,98 @@
+[
+  {
+    "type": "correct",
+    "image_path": "PlantVillage\\Tomato__Tomato_YellowLeaf__Curl_Virus\\77f04c08-8c17-4c56-b220-5c2928467336___YLCV_GCREC 2536.JPG",
+    "true_class": "Tomato__Tomato_YellowLeaf__Curl_Virus",
+    "predicted_class": "Tomato__Tomato_YellowLeaf__Curl_Virus",
+    "confidence": 0.9885,
+    "saved_file": "reports\\examples\\correct_1.png"
+  },
+  {
+    "type": "correct",
+    "image_path": "PlantVillage\\Tomato_Late_blight\\bf0b58c2-1d95-4f37-80ea-1bcd82e9c59b___GHLB2 Leaf 145.4.JPG",
+    "true_class": "Tomato_Late_blight",
+    "predicted_class": "Tomato_Late_blight",
+    "confidence": 0.7349,
+    "saved_file": "reports\\examples\\correct_2.png"
+  },
+  {
+    "type": "correct",
+    "image_path": "PlantVillage\\Tomato_Septoria_leaf_spot\\87106385-3a72-45ed-bb0f-8d4e8e1c7aeb___JR_Sept.L.S 8365.JPG",
+    "true_class": "Tomato_Septoria_leaf_spot",
+    "predicted_class": "Tomato_Septoria_leaf_spot",
+    "confidence": 0.9591,
+    "saved_file": "reports\\examples\\correct_3.png"
+  },
+  {
+    "type": "correct",
+    "image_path": "PlantVillage\\Tomato__Tomato_YellowLeaf__Curl_Virus\\7b49148d-a987-4e7c-b152-e7bf1dc32075___UF.GRC_YLCV_Lab 08449.JPG",
+    "true_class": "Tomato__Tomato_YellowLeaf__Curl_Virus",
+    "predicted_class": "Tomato__Tomato_YellowLeaf__Curl_Virus",
+    "confidence": 0.4597,
+    "saved_file": "reports\\examples\\correct_4.png"
+  },
+  {
+    "type": "correct",
+    "image_path": "PlantVillage\\Tomato__Tomato_YellowLeaf__Curl_Virus\\6f554285-e52f-440a-8ea5-e1295b2a9ff3___UF.GRC_YLCV_Lab 02028.JPG",
+    "true_class": "Tomato__Tomato_YellowLeaf__Curl_Virus",
+    "predicted_class": "Tomato__Tomato_YellowLeaf__Curl_Virus",
+    "confidence": 0.9902,
+    "saved_file": "reports\\examples\\correct_5.png"
+  },
+  {
+    "type": "correct",
+    "image_path": "PlantVillage\\Tomato_Bacterial_spot\\c6802f8a-d9c0-47ea-bd12-cd51b3bd9ef2___GCREC_Bact.Sp 3058.JPG",
+    "true_class": "Tomato_Bacterial_spot",
+    "predicted_class": "Tomato_Bacterial_spot",
+    "confidence": 0.7926,
+    "saved_file": "reports\\examples\\correct_6.png"
+  },
+  {
+    "type": "incorrect",
+    "image_path": "PlantVillage\\Tomato_Late_blight\\d989b5d3-715f-4d85-8475-0a2ec3beaa98___RS_Late.B 5022.JPG",
+    "true_class": "Tomato_Late_blight",
+    "predicted_class": "Potato___Late_blight",
+    "confidence": 0.9404,
+    "saved_file": "reports\\examples\\incorrect_1.png"
+  },
+  {
+    "type": "incorrect",
+    "image_path": "PlantVillage\\Tomato_Bacterial_spot\\51d765e5-9c9d-40b9-8a71-32cf12ac2262___GCREC_Bact.Sp 3559.JPG",
+    "true_class": "Tomato_Bacterial_spot",
+    "predicted_class": "Tomato__Target_Spot",
+    "confidence": 0.9277,
+    "saved_file": "reports\\examples\\incorrect_2.png"
+  },
+  {
+    "type": "incorrect",
+    "image_path": "PlantVillage\\Tomato_Late_blight\\badd718d-0a43-411b-889c-d46a01834dba___RS_Late.B 5547.JPG",
+    "true_class": "Tomato_Late_blight",
+    "predicted_class": "Potato___Late_blight",
+    "confidence": 0.8727,
+    "saved_file": "reports\\examples\\incorrect_3.png"
+  },
+  {
+    "type": "incorrect",
+    "image_path": "PlantVillage\\Tomato_Late_blight\\7847d3dd-66e7-470f-ab6e-5273c3ee8924___RS_Late.B 4905.JPG",
+    "true_class": "Tomato_Late_blight",
+    "predicted_class": "Potato___Late_blight",
+    "confidence": 0.9918,
+    "saved_file": "reports\\examples\\incorrect_4.png"
+  },
+  {
+    "type": "incorrect",
+    "image_path": "PlantVillage\\Tomato__Target_Spot\\b9e0a7ff-7055-4184-a8bd-ff4321dc8dee___Com.G_TgS_FL 7866.JPG",
+    "true_class": "Tomato__Target_Spot",
+    "predicted_class": "Tomato_Early_blight",
+    "confidence": 0.6082,
+    "saved_file": "reports\\examples\\incorrect_5.png"
+  },
+  {
+    "type": "incorrect",
+    "image_path": "PlantVillage\\Tomato_Spider_mites_Two_spotted_spider_mite\\518cbf00-c59d-48ba-9bcb-e7db50d28524___Com.G_SpM_FL 1300.JPG",
+    "true_class": "Tomato_Spider_mites_Two_spotted_spider_mite",
+    "predicted_class": "Tomato__Tomato_mosaic_virus",
+    "confidence": 0.86,
+    "saved_file": "reports\\examples\\incorrect_6.png"
+  }
+]

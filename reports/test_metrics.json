@@ -1,0 +1,64 @@
+{
+  "model_path": "models\\agriguard_best.pth",
+  "test_samples_count": 2063,
+  "overall_accuracy": 0.9283,
+  "balanced_accuracy": 0.9398,
+  "macro_precision": 0.9133,
+  "macro_recall": 0.9398,
+  "macro_f1": 0.9201,
+  "weighted_precision": 0.9381,
+  "weighted_recall": 0.9283,
+  "weighted_f1": 0.9277,
+  "top_confused_pairs": [
+    {
+      "actual": "Tomato_Late_blight",
+      "predicted": "Potato___Late_blight",
+      "count": 46
+    },
+    {
+      "actual": "Tomato__Target_Spot",
+      "predicted": "Tomato_Spider_mites_Two_spotted_spider_mite",
+      "count": 24
+    },
+    {
+      "actual": "Tomato__Tomato_YellowLeaf__Curl_Virus",
+      "predicted": "Tomato_Bacterial_spot",
+      "count": 12
+    },
+    {
+      "actual": "Tomato_Late_blight",
+      "predicted": "Tomato_Early_blight",
+      "count": 9
+    },
+    {
+      "actual": "Tomato_Early_blight",
+      "predicted": "Tomato__Target_Spot",
+      "count": 5
+    },
+    {
+      "actual": "Potato___Late_blight",
+      "predicted": "Potato___healthy",
+      "count": 4
+    },
+    {
+      "actual": "Tomato_Bacterial_spot",
+      "predicted": "Tomato_Early_blight",
+      "count": 4
+    },
+    {
+      "actual": "Tomato_Bacterial_spot",
+      "predicted": "Tomato__Target_Spot",
+      "count": 4
+    },
+    {
+      "actual": "Tomato_Late_blight",
+      "predicted": "Tomato_Septoria_leaf_spot",
+      "count": 3
+    },
+    {
+      "actual": "Tomato_Septoria_leaf_spot",
+      "predicted": "Tomato_Early_blight",
+      "count": 3
+    }
+  ]
+}
