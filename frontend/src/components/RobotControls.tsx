@@ -47,6 +47,8 @@ export const RobotControls: React.FC<RobotControlsProps> = ({
   const [heartbeatActive, setHeartbeatActive] = useState<boolean>(false);
   const [lastHeartbeatTime, setLastHeartbeatTime] = useState<string>('');
   const activeDirectionRef = useRef<string | null>(null);
+  const pointerStartTimeRef = useRef<number>(0);
+  const clickTimeoutRef = useRef<any>(null);
 
   const esp32Connected = telemetry?.esp32_connected ?? false;
   const isEStopActive = telemetry?.safety?.emergency_stop ?? false;
@@ -57,88 +59,75 @@ export const RobotControls: React.FC<RobotControlsProps> = ({
   const valveOpen = telemetry?.actuators?.valve_open ?? false;
   const flowRate = telemetry?.actuators?.flow_rate_ml_s ?? 0.0;
 
-  // Fetch local network info on mount
-  useEffect(() => {
-    fetchNetworkStatus()
-      .then((info) => {
-        setNetworkInfo(info);
-        setCustomEsp32Ip(info.esp32_target_ip);
-      })
-      .catch((err) => console.debug('Network status fetch error:', err));
-  }, []);
+  // Unified stop helper
+  const executeStop = useCallback(async () => {
+    if (clickTimeoutRef.current) {
+      clearTimeout(clickTimeoutRef.current);
+      clickTimeoutRef.current = null;
+    }
+    setActiveDirection(null);
+    activeDirectionRef.current = null;
+    try {
+      await onStop();
+    } catch (e) {
+      console.error('Stop command error:', e);
+    }
+  }, [onStop]);
 
-  // Heartbeat loop: sends keep-alive every 1000ms
-  useEffect(() => {
-    let unmounted = false;
-    const interval = setInterval(async () => {
-      try {
-        const res = await sendRobotHeartbeat();
-        if (!unmounted && res.ok) {
-          setHeartbeatActive(true);
-          setPingMs(res.esp32_ping_ms);
-          setLastHeartbeatTime(new Date().toLocaleTimeString());
-        } else if (!unmounted) {
-          setHeartbeatActive(false);
-          setPingMs(null);
-        }
-      } catch (e) {
-        if (!unmounted) {
-          setHeartbeatActive(false);
-          setPingMs(null);
-        }
-      }
-    }, 1000);
+  // Unified movement helper
+  const executeMove = useCallback(async (dir: string, pulseMs: number = 0) => {
+    if (isEStopActive) return;
+    if (dir === 'stop') {
+      await executeStop();
+      return;
+    }
+    setActiveDirection(dir);
+    activeDirectionRef.current = dir;
+    try {
+      await onMove(dir, speed, pulseMs);
+    } catch (e) {
+      console.error('Movement command error:', e);
+    }
+  }, [isEStopActive, speed, onMove, executeStop]);
 
-    return () => {
-      unmounted = true;
-      clearInterval(interval);
-    };
-  }, []);
-
-  // Keyboard navigation support for laptop users
+  // Keyboard navigation support (W / A / S / D and Arrow Keys and Spacebar)
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      // Ignore if user is typing in an input
+      // Ignore if user is typing in an input or textarea
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return;
 
-      if (!esp32Connected || isEStopActive) return;
+      if (isEStopActive) return;
 
       let dir: string | null = null;
       if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') dir = 'forward';
       else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') dir = 'backward';
       else if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') dir = 'left';
       else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') dir = 'right';
-      else if (e.key === ' ' || e.key === 'Escape') {
+      else if (e.key === ' ' || e.key === 'Escape' || e.key === 'x' || e.key === 'X') {
         e.preventDefault();
-        onStop();
-        setActiveDirection(null);
-        activeDirectionRef.current = null;
+        executeStop();
         return;
       }
 
       if (dir && activeDirectionRef.current !== dir) {
         e.preventDefault();
-        setActiveDirection(dir);
-        activeDirectionRef.current = dir;
-        onMove(dir, speed);
+        executeMove(dir);
       }
     },
-    [esp32Connected, isEStopActive, speed, onMove, onStop]
+    [isEStopActive, executeMove, executeStop]
   );
 
   const handleKeyUp = useCallback(
     (e: KeyboardEvent) => {
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return;
 
-      const keys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'W', 's', 'S', 'a', 'A', 'd', 'D'];
-      if (keys.includes(e.key)) {
+      const movementKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'W', 's', 'S', 'a', 'A', 'd', 'D'];
+      if (movementKeys.includes(e.key)) {
         e.preventDefault();
-        setActiveDirection(null);
-        activeDirectionRef.current = null;
-        onStop();
+        executeStop();
       }
     },
-    [onStop]
+    [executeStop]
   );
 
   useEffect(() => {
@@ -150,39 +139,41 @@ export const RobotControls: React.FC<RobotControlsProps> = ({
     };
   }, [handleKeyDown, handleKeyUp]);
 
-  // Touch / Pointer command dispatchers
+  // Touch & Pointer command dispatchers (Supports both hold-to-move AND single-click pulse)
   const handlePointerDown = async (direction: string) => {
-    if (!esp32Connected || isEStopActive) return;
-    setActiveDirection(direction);
-    activeDirectionRef.current = direction;
-    try {
-      if (direction === 'stop') {
-        await onStop();
-      } else {
-        await onMove(direction, speed);
-      }
-    } catch (e) {
-      console.error('Movement command error:', e);
-    }
+    if (isEStopActive) return;
+    pointerStartTimeRef.current = Date.now();
+    await executeMove(direction);
   };
 
-  const handlePointerUp = async () => {
-    if (activeDirectionRef.current) {
-      setActiveDirection(null);
-      activeDirectionRef.current = null;
-      try {
-        await onStop();
-      } catch (e) {
-        console.error('Stop error on release:', e);
-      }
+  const handlePointerUp = async (direction?: string) => {
+    const elapsed = Date.now() - pointerStartTimeRef.current;
+    // If it was a quick click (< 220ms), sustain a 450ms movement pulse so robot visibly moves
+    if (elapsed < 220 && direction && direction !== 'stop') {
+      if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current);
+      clickTimeoutRef.current = setTimeout(() => {
+        if (activeDirectionRef.current === direction) {
+          executeStop();
+        }
+      }, 450);
+    } else {
+      await executeStop();
     }
   };
 
   // Nudge / Fine-pulse maneuvering (moves for exact pulse e.g. 250ms)
   const handleNudge = async (direction: string, durationMs: number = 250) => {
-    if (!esp32Connected || isEStopActive) return;
+    if (isEStopActive) return;
+    setActiveDirection(direction);
+    activeDirectionRef.current = direction;
     try {
       await onMove(direction, Math.min(speed, 140), durationMs);
+      setTimeout(() => {
+        if (activeDirectionRef.current === direction) {
+          setActiveDirection(null);
+          activeDirectionRef.current = null;
+        }
+      }, durationMs);
     } catch (e) {
       console.error('Nudge command error:', e);
     }
@@ -236,7 +227,7 @@ export const RobotControls: React.FC<RobotControlsProps> = ({
 
           <div className={`status-pill ${esp32Connected ? 'status-online' : 'status-offline'}`} style={{ fontSize: '0.7rem' }}>
             <Radio size={12} className={heartbeatActive ? 'animate-pulse' : ''} />
-            <span>{esp32Connected ? `ONLINE ${pingMs ? `(${pingMs}ms)` : ''}` : 'ESP32 OFFLINE'}</span>
+            <span>{esp32Connected ? `ONLINE ${pingMs ? `(${pingMs}ms)` : ''}` : 'ESP32 OFFLINE (SIMULATED CONTROL)'}</span>
           </div>
         </div>
       </div>
@@ -310,7 +301,15 @@ export const RobotControls: React.FC<RobotControlsProps> = ({
           fontSize: '0.75rem',
           color: 'var(--text-muted)'
         }}>
-          <span>Active State: <strong className="mono" style={{ color: motorState !== 'STOPPED' ? 'var(--emerald-400)' : '#fff' }}>{motorState}</strong></span>
+          <span>
+            Active State:{' '}
+            <strong className="mono" style={{
+              color: activeDirection ? 'var(--emerald-400)' : (motorState !== 'STOPPED' ? 'var(--emerald-400)' : '#fff'),
+              textShadow: activeDirection ? '0 0 10px rgba(16, 185, 129, 0.5)' : 'none'
+            }}>
+              {activeDirection ? activeDirection.toUpperCase() : motorState}
+            </strong>
+          </span>
           <span>Watchdog: <strong className="mono" style={{ color: 'var(--sky-400)' }}>1500ms Active</strong></span>
         </div>
 
@@ -332,25 +331,31 @@ export const RobotControls: React.FC<RobotControlsProps> = ({
           {/* FORWARD */}
           <button
             onPointerDown={() => handlePointerDown('forward')}
-            onPointerUp={handlePointerUp}
-            onPointerLeave={handlePointerUp}
-            onPointerCancel={handlePointerUp}
-            disabled={!esp32Connected || isEStopActive}
+            onPointerUp={() => handlePointerUp('forward')}
+            onPointerLeave={() => handlePointerUp()}
+            onPointerCancel={() => handlePointerUp()}
+            onClick={(e) => {
+              e.preventDefault();
+              if (!activeDirectionRef.current) {
+                handleNudge('forward', 450);
+              }
+            }}
+            disabled={isEStopActive}
             style={{
               background: activeDirection === 'forward' ? 'var(--emerald-500)' : 'rgba(255, 255, 255, 0.08)',
               color: activeDirection === 'forward' ? '#000' : '#fff',
-              border: '2px solid rgba(255, 255, 255, 0.15)',
+              border: `2px solid ${activeDirection === 'forward' ? 'var(--emerald-400)' : 'rgba(255, 255, 255, 0.15)'}`,
               borderRadius: '16px',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: 'pointer',
+              cursor: isEStopActive ? 'not-allowed' : 'pointer',
               transition: 'all 0.15s ease',
               boxShadow: activeDirection === 'forward' ? '0 0 20px var(--emerald-glow)' : 'none',
               touchAction: 'none'
             }}
-            title="Drive Forward (Hold to Move)"
+            title="Drive Forward (Click or Hold W / Up Arrow)"
           >
             <ArrowUp size={30} />
             <span style={{ fontSize: '0.7rem', fontWeight: 800, marginTop: '2px' }}>FWD</span>
@@ -362,25 +367,31 @@ export const RobotControls: React.FC<RobotControlsProps> = ({
           {/* LEFT */}
           <button
             onPointerDown={() => handlePointerDown('left')}
-            onPointerUp={handlePointerUp}
-            onPointerLeave={handlePointerUp}
-            onPointerCancel={handlePointerUp}
-            disabled={!esp32Connected || isEStopActive}
+            onPointerUp={() => handlePointerUp('left')}
+            onPointerLeave={() => handlePointerUp()}
+            onPointerCancel={() => handlePointerUp()}
+            onClick={(e) => {
+              e.preventDefault();
+              if (!activeDirectionRef.current) {
+                handleNudge('left', 450);
+              }
+            }}
+            disabled={isEStopActive}
             style={{
               background: activeDirection === 'left' ? 'var(--emerald-500)' : 'rgba(255, 255, 255, 0.08)',
               color: activeDirection === 'left' ? '#000' : '#fff',
-              border: '2px solid rgba(255, 255, 255, 0.15)',
+              border: `2px solid ${activeDirection === 'left' ? 'var(--emerald-400)' : 'rgba(255, 255, 255, 0.15)'}`,
               borderRadius: '16px',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: 'pointer',
+              cursor: isEStopActive ? 'not-allowed' : 'pointer',
               transition: 'all 0.15s ease',
               boxShadow: activeDirection === 'left' ? '0 0 20px var(--emerald-glow)' : 'none',
               touchAction: 'none'
             }}
-            title="Turn Left (Hold to Turn)"
+            title="Turn Left (Click or Hold A / Left Arrow)"
           >
             <ArrowLeft size={30} />
             <span style={{ fontSize: '0.7rem', fontWeight: 800, marginTop: '2px' }}>LEFT</span>
@@ -388,13 +399,13 @@ export const RobotControls: React.FC<RobotControlsProps> = ({
 
           {/* CENTER HARD STOP */}
           <button
-            onClick={() => {
-              onStop();
-              setActiveDirection(null);
+            onClick={(e) => {
+              e.preventDefault();
+              executeStop();
             }}
-            disabled={!esp32Connected}
+            disabled={isEStopActive}
             style={{
-              background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.3) 0%, rgba(185, 28, 28, 0.5) 100%)',
+              background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.4) 0%, rgba(185, 28, 28, 0.6) 100%)',
               color: '#fff',
               border: '2px solid var(--rose-500)',
               borderRadius: '16px',
@@ -402,11 +413,11 @@ export const RobotControls: React.FC<RobotControlsProps> = ({
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: 'pointer',
+              cursor: isEStopActive ? 'not-allowed' : 'pointer',
               transition: 'all 0.15s ease',
-              boxShadow: '0 0 15px rgba(239, 68, 68, 0.3)'
+              boxShadow: '0 0 15px rgba(239, 68, 68, 0.4)'
             }}
-            title="Instant Stop (Spacebar)"
+            title="Instant Stop (Click or Spacebar / Escape / X)"
           >
             <Square size={26} color="#fff" />
             <span style={{ fontSize: '0.75rem', fontWeight: 900, marginTop: '2px', letterSpacing: '0.05em' }}>STOP</span>
@@ -415,25 +426,31 @@ export const RobotControls: React.FC<RobotControlsProps> = ({
           {/* RIGHT */}
           <button
             onPointerDown={() => handlePointerDown('right')}
-            onPointerUp={handlePointerUp}
-            onPointerLeave={handlePointerUp}
-            onPointerCancel={handlePointerUp}
-            disabled={!esp32Connected || isEStopActive}
+            onPointerUp={() => handlePointerUp('right')}
+            onPointerLeave={() => handlePointerUp()}
+            onPointerCancel={() => handlePointerUp()}
+            onClick={(e) => {
+              e.preventDefault();
+              if (!activeDirectionRef.current) {
+                handleNudge('right', 450);
+              }
+            }}
+            disabled={isEStopActive}
             style={{
               background: activeDirection === 'right' ? 'var(--emerald-500)' : 'rgba(255, 255, 255, 0.08)',
               color: activeDirection === 'right' ? '#000' : '#fff',
-              border: '2px solid rgba(255, 255, 255, 0.15)',
+              border: `2px solid ${activeDirection === 'right' ? 'var(--emerald-400)' : 'rgba(255, 255, 255, 0.15)'}`,
               borderRadius: '16px',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: 'pointer',
+              cursor: isEStopActive ? 'not-allowed' : 'pointer',
               transition: 'all 0.15s ease',
               boxShadow: activeDirection === 'right' ? '0 0 20px var(--emerald-glow)' : 'none',
               touchAction: 'none'
             }}
-            title="Turn Right (Hold to Turn)"
+            title="Turn Right (Click or Hold D / Right Arrow)"
           >
             <ArrowRight size={30} />
             <span style={{ fontSize: '0.7rem', fontWeight: 800, marginTop: '2px' }}>RIGHT</span>
@@ -445,25 +462,31 @@ export const RobotControls: React.FC<RobotControlsProps> = ({
           {/* REVERSE */}
           <button
             onPointerDown={() => handlePointerDown('backward')}
-            onPointerUp={handlePointerUp}
-            onPointerLeave={handlePointerUp}
-            onPointerCancel={handlePointerUp}
-            disabled={!esp32Connected || isEStopActive}
+            onPointerUp={() => handlePointerUp('backward')}
+            onPointerLeave={() => handlePointerUp()}
+            onPointerCancel={() => handlePointerUp()}
+            onClick={(e) => {
+              e.preventDefault();
+              if (!activeDirectionRef.current) {
+                handleNudge('backward', 450);
+              }
+            }}
+            disabled={isEStopActive}
             style={{
               background: activeDirection === 'backward' ? 'var(--emerald-500)' : 'rgba(255, 255, 255, 0.08)',
               color: activeDirection === 'backward' ? '#000' : '#fff',
-              border: '2px solid rgba(255, 255, 255, 0.15)',
+              border: `2px solid ${activeDirection === 'backward' ? 'var(--emerald-400)' : 'rgba(255, 255, 255, 0.15)'}`,
               borderRadius: '16px',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: 'pointer',
+              cursor: isEStopActive ? 'not-allowed' : 'pointer',
               transition: 'all 0.15s ease',
               boxShadow: activeDirection === 'backward' ? '0 0 20px var(--emerald-glow)' : 'none',
               touchAction: 'none'
             }}
-            title="Drive Backward (Hold to Move)"
+            title="Drive Backward (Click or Hold S / Down Arrow)"
           >
             <ArrowDown size={30} />
             <span style={{ fontSize: '0.7rem', fontWeight: 800, marginTop: '2px' }}>REV</span>
@@ -475,7 +498,7 @@ export const RobotControls: React.FC<RobotControlsProps> = ({
 
         {/* Laptop keyboard hint */}
         <div style={{ marginTop: '0.85rem', fontSize: '0.68rem', color: 'var(--text-dim)', textAlign: 'center' }}>
-          Keyboard controls: <span className="mono">W / A / S / D</span> or <span className="mono">Arrow Keys</span> &bull; <span className="mono">Space</span> for STOP
+          Keyboard controls: <span className="mono">W / A / S / D</span> or <span className="mono">Arrow Keys</span> &bull; <span className="mono">Space / Esc</span> for STOP
         </div>
       </div>
 
@@ -493,7 +516,7 @@ export const RobotControls: React.FC<RobotControlsProps> = ({
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
           <button
             onClick={() => handleNudge('forward', 250)}
-            disabled={!esp32Connected || isEStopActive}
+            disabled={isEStopActive}
             className="btn btn-outline"
             style={{ padding: '0.4rem 0.2rem', fontSize: '0.7rem' }}
           >
@@ -501,7 +524,7 @@ export const RobotControls: React.FC<RobotControlsProps> = ({
           </button>
           <button
             onClick={() => handleNudge('backward', 250)}
-            disabled={!esp32Connected || isEStopActive}
+            disabled={isEStopActive}
             className="btn btn-outline"
             style={{ padding: '0.4rem 0.2rem', fontSize: '0.7rem' }}
           >
@@ -509,7 +532,7 @@ export const RobotControls: React.FC<RobotControlsProps> = ({
           </button>
           <button
             onClick={() => handleNudge('left', 250)}
-            disabled={!esp32Connected || isEStopActive}
+            disabled={isEStopActive}
             className="btn btn-outline"
             style={{ padding: '0.4rem 0.2rem', fontSize: '0.7rem' }}
           >
@@ -517,7 +540,7 @@ export const RobotControls: React.FC<RobotControlsProps> = ({
           </button>
           <button
             onClick={() => handleNudge('right', 250)}
-            disabled={!esp32Connected || isEStopActive}
+            disabled={isEStopActive}
             className="btn btn-outline"
             style={{ padding: '0.4rem 0.2rem', fontSize: '0.7rem' }}
           >
