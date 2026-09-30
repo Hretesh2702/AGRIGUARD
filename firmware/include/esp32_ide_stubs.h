@@ -101,8 +101,17 @@ inline String operator+(const char* lhs, const String& rhs) { return String(lhs 
 inline String operator+(const String& lhs, char rhs) { return String(lhs.c_str()); }
 inline String operator+(const String& lhs, int rhs) { return String(lhs.c_str()); }
 
+class Print;
+
+// Arduino Printable interface stub
+class Printable {
+public:
+    virtual ~Printable() {}
+    virtual size_t printTo(Print& p) const = 0;
+};
+
 // IPAddress stub matching official ESP32 / Arduino IPAddress API
-class IPAddress {
+class IPAddress : public Printable {
 public:
     uint8_t octets[4];
     IPAddress() : octets{0, 0, 0, 0} {}
@@ -128,6 +137,8 @@ public:
     String toString() const {
         return String("192.168.4.1");
     }
+
+    size_t printTo(Print& p) const override { return 0; }
 };
 
 // WebServer HTTP method enums and constants matching ESP32 WebServer.h
@@ -177,31 +188,121 @@ public:
     String arg(const char* name) { return String(""); }
 };
 
+// WiFi Mode Constants
+typedef enum {
+    WIFI_OFF = 0,
+    WIFI_STA = 1,
+    WIFI_AP = 2,
+    WIFI_AP_STA = 3
+} wifi_mode_t;
+
+#ifndef WIFI_OFF
+#define WIFI_OFF wifi_mode_t::WIFI_OFF
+#endif
+#ifndef WIFI_STA
+#define WIFI_STA wifi_mode_t::WIFI_STA
+#endif
+#ifndef WIFI_AP
+#define WIFI_AP wifi_mode_t::WIFI_AP
+#endif
+#ifndef WIFI_AP_STA
+#define WIFI_AP_STA wifi_mode_t::WIFI_AP_STA
+#endif
+
+// WiFi Status Constants
+typedef enum {
+    WL_NO_SHIELD = 255,
+    WL_IDLE_STATUS = 0,
+    WL_NO_SSID_AVAIL = 1,
+    WL_SCAN_COMPLETED = 2,
+    WL_CONNECTED = 3,
+    WL_CONNECT_FAILED = 4,
+    WL_CONNECTION_LOST = 5,
+    WL_DISCONNECTED = 6
+} wl_status_t;
+
+#ifndef WL_NO_SHIELD
+#define WL_NO_SHIELD wl_status_t::WL_NO_SHIELD
+#endif
+#ifndef WL_IDLE_STATUS
+#define WL_IDLE_STATUS wl_status_t::WL_IDLE_STATUS
+#endif
+#ifndef WL_NO_SSID_AVAIL
+#define WL_NO_SSID_AVAIL wl_status_t::WL_NO_SSID_AVAIL
+#endif
+#ifndef WL_SCAN_COMPLETED
+#define WL_SCAN_COMPLETED wl_status_t::WL_SCAN_COMPLETED
+#endif
+#ifndef WL_CONNECTED
+#define WL_CONNECTED wl_status_t::WL_CONNECTED
+#endif
+#ifndef WL_CONNECT_FAILED
+#define WL_CONNECT_FAILED wl_status_t::WL_CONNECT_FAILED
+#endif
+#ifndef WL_CONNECTION_LOST
+#define WL_CONNECTION_LOST wl_status_t::WL_CONNECTION_LOST
+#endif
+#ifndef WL_DISCONNECTED
+#define WL_DISCONNECTED wl_status_t::WL_DISCONNECTED
+#endif
+
 // WiFi stub
 class WiFiClass {
 public:
+    bool mode(wifi_mode_t m) { return true; }
+    bool mode(int m) { return true; }
     bool softAP(const char* ssid, const char* passphrase = nullptr) { return true; }
     bool softAPConfig(IPAddress local_ip, IPAddress gateway, IPAddress subnet) { return true; }
     void begin(const char* ssid, const char* passphrase = nullptr) {}
-    int status() { return 3; }
+    wl_status_t status() { return WL_CONNECTED; }
     IPAddress localIP() { return IPAddress(192, 168, 4, 1); }
     IPAddress softAPIP() { return IPAddress(192, 168, 4, 1); }
+    bool disconnect(bool wifioff = false) { return true; }
 };
 inline WiFiClass WiFi;
+
+// Serial Config Constants
+#ifndef SERIAL_8N1
+#define SERIAL_8N1 0x800001c
+#endif
 
 // Print, Stream & HardwareSerial stubs
 class Print {
 public:
+    virtual ~Print() {}
     virtual size_t write(uint8_t) { return 1; }
     virtual size_t write(const uint8_t *buffer, size_t size) { return size; }
-    void print(const String& s) {}
-    void print(const char* s) {}
-    void print(int n) {}
-    void print(float n, int digits = 2) {}
-    void println(const String& s = "") {}
-    void println(const char* s) {}
-    void println(int n) {}
-    void println(float n, int digits = 2) {}
+
+    size_t print(const String& s) { return s.length(); }
+    size_t print(const char* s) { return 0; }
+    size_t print(char c) { return 1; }
+    size_t print(unsigned char b, int base = 10) { return 0; }
+    size_t print(int n, int base = 10) { return 0; }
+    size_t print(unsigned int n, int base = 10) { return 0; }
+    size_t print(long n, int base = 10) { return 0; }
+    size_t print(unsigned long n, int base = 10) { return 0; }
+    size_t print(double n, int digits = 2) { return 0; }
+    size_t print(float n, int digits = 2) { return 0; }
+    size_t print(const Printable& p) { return 0; }
+    size_t print(const IPAddress& ip) { return 0; }
+
+    size_t println(void) { return 2; }
+    size_t println(const String& s) { return s.length() + 2; }
+    size_t println(const char* s) { return 0; }
+    size_t println(char c) { return 1; }
+    size_t println(unsigned char b, int base = 10) { return 0; }
+    size_t println(int n, int base = 10) { return 0; }
+    size_t println(unsigned int n, int base = 10) { return 0; }
+    size_t println(long n, int base = 10) { return 0; }
+    size_t println(unsigned long n, int base = 10) { return 0; }
+    size_t println(double n, int digits = 2) { return 0; }
+    size_t println(float n, int digits = 2) { return 0; }
+    size_t println(const Printable& p) { return 0; }
+    size_t println(const IPAddress& ip) { return 0; }
+
+    template<typename... Args>
+    size_t printf(const char* format, Args... args) { return 0; }
+    size_t printf(const char* format, ...) { return 0; }
 };
 
 class Stream : public Print {
@@ -217,8 +318,14 @@ public:
     HardwareSerial(int uart_nr = 0) {}
     void begin(unsigned long baud, uint32_t config = 0, int8_t rxPin = -1, int8_t txPin = -1) {}
     void flush() {}
+
+    template<typename... Args>
+    size_t printf(const char* format, Args... args) { return 0; }
+    size_t printf(const char* format, ...) { return 0; }
 };
 inline HardwareSerial Serial(0);
+inline HardwareSerial Serial1(1);
+inline HardwareSerial Serial2(2);
 
 // Arduino Core Functions & Math Helpers
 #ifndef constrain
