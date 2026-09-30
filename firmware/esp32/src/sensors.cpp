@@ -46,10 +46,8 @@ void SensorManager::init() {
         Serial.println("[SensorManager] MPU6050 not detected on I2C bus (0x68).");
     }
 
-    // RS485 Modbus Serial2
-    pinMode(RS485_DE_RE_PIN, OUTPUT);
-    digitalWrite(RS485_DE_RE_PIN, LOW); // Receive mode
-    Serial2.begin(9600, SERIAL_8N1, RS485_RX2_PIN, RS485_TX2_PIN);
+    // RS485 Modbus NPK Subsystem
+    NPKModbusDriver::init();
 
     lastFlowCalcTime = millis();
 }
@@ -143,64 +141,13 @@ uint16_t SensorManager::calculateCRC16(const uint8_t *buf, int len) {
 }
 
 NPKData SensorManager::queryModbusNPK() {
-    NPKData result = {0};
-    result.valid = false;
-
-    // Modbus RTU Query: Slave 0x01, Function 0x03, Start 0x001E, 3 registers
-    uint8_t query[8] = {0x01, 0x03, 0x00, 0x1E, 0x00, 0x03, 0x00, 0x00};
-    uint16_t crc = calculateCRC16(query, 6);
-    query[6] = crc & 0xFF;         // CRC Low
-    query[7] = (crc >> 8) & 0xFF;  // CRC High
-
-    // Clear any stale incoming bytes
-    while (Serial2.available()) Serial2.read();
-
-    // Enable RS485 Transmitter (DE/RE = HIGH)
-    digitalWrite(RS485_DE_RE_PIN, HIGH);
-    delayMicroseconds(50);
-    Serial2.write(query, 8);
-    Serial2.flush();
-    digitalWrite(RS485_DE_RE_PIN, LOW); // Return to Receive mode
-
-    // Wait for 11-byte Modbus response: [Addr, Func, ByteCount, N_H, N_L, P_H, P_L, K_H, K_L, CRC_L, CRC_H]
-    uint8_t response[16];
-    int bytesReceived = 0;
-    unsigned long timeout = millis() + 150;
-
-    while (millis() < timeout && bytesReceived < 11) {
-        if (Serial2.available()) {
-            response[bytesReceived++] = Serial2.read();
-        }
-    }
-
-    if (bytesReceived < 11) {
-        result.valid = false;
-        result.error_message = "RS485 Modbus timeout: Sensor did not reply";
-        return result;
-    }
-
-    // Verify Slave Address and Function Code
-    if (response[0] != 0x01 || response[1] != 0x03 || response[2] != 0x06) {
-        result.valid = false;
-        result.error_message = "Invalid Modbus response header";
-        return result;
-    }
-
-    // Verify CRC16
-    uint16_t receivedCRC = response[9] | (response[10] << 8);
-    uint16_t calculatedCRC = calculateCRC16(response, 9);
-    if (receivedCRC != calculatedCRC) {
-        result.valid = false;
-        result.error_message = "Modbus CRC16 checksum failure";
-        return result;
-    }
-
-    // Parse Nitrogen, Phosphorus, Potassium (mg/kg)
-    result.nitrogen_mg_kg = (response[3] << 8) | response[4];
-    result.phosphorus_mg_kg = (response[5] << 8) | response[6];
-    result.potassium_mg_kg = (response[7] << 8) | response[8];
-    result.valid = true;
-    result.error_message = nullptr;
+    NPKResult res = NPKModbusDriver::read();
+    NPKData result;
+    result.valid = res.valid;
+    result.nitrogen_mg_kg = res.nitrogen_mg_kg;
+    result.phosphorus_mg_kg = res.phosphorus_mg_kg;
+    result.potassium_mg_kg = res.potassium_mg_kg;
+    result.error_message = res.error_message;
     return result;
 }
 

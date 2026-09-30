@@ -55,6 +55,17 @@
 #define FLOW_VERIFY_DELAY_MS        600     // Milliseconds after pump start to verify flow
 #define MIN_REQUIRED_FLOW_ML_S      2.5f    // Fault if flow < 2.5 mL/s during spray
 #define FLOW_PULSES_PER_LITER       5880.0f // YF-S401 calibration factor
+#define MIN_OBSTACLE_STOP_CM        25.0f   // Autonomous emergency stop if obstacle closer than 25cm
+
+// Network & WebServer Constants
+#define HTTP_PORT                   80
+#define WEBSOCKET_PORT              81
+
+// RS485 Modbus NPK Sensor Default Mapping
+#define NPK_DEFAULT_SLAVE_ID        0x01
+#define NPK_DEFAULT_BAUD            9600
+#define NPK_REG_START_ADDR          0x001E  // Holding register 30 (0x001E)
+#define NPK_REG_READ_COUNT          3       // Reads Nitrogen, Phosphorus, Potassium
 
 // PWM Parameters for Motor Control
 #define PWM_FREQUENCY_HZ            1000

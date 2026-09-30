@@ -237,15 +237,77 @@ class MoveRequest(BaseModel):
     duration_ms: Optional[int] = Field(default=0, ge=0)
 
 
-def get_field_lan_ip() -> str:
-    """Discovers laptop's local field IP for smartphone connections."""
-    import socket
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.connect(("10.255.255.255", 1))
-            return s.getsockname()[0]
-    except Exception:
-        return "127.0.0.1"
+class RobotCommandRequest(BaseModel):
+    type: Optional[str] = "robot_command"
+    command: str = Field(..., description="FORWARD, BACKWARD, LEFT, RIGHT, STOP, SPEED_UP, SPEED_DOWN, EMERGENCY_STOP")
+    speed: Optional[int] = Field(default=120, ge=0, le=255)
+    duration_ms: Optional[int] = Field(default=0, ge=0)
+    timestamp: Optional[float] = None
+
+
+class HardwareModeRequest(BaseModel):
+    mode: str = Field(..., description="REAL_HARDWARE or SIMULATION")
+
+
+@app.get("/api/robot/mode")
+def get_hardware_mode():
+    return {
+        "mode": esp32.hardware_mode,
+        "is_connected": esp32.is_connected,
+        "ping_ms": esp32.last_ping_ms,
+        "transport": "Wi-Fi" if esp32.hardware_mode == "REAL_HARDWARE" else "MockSimulation"
+    }
+
+
+@app.post("/api/robot/mode")
+def set_hardware_mode(req: HardwareModeRequest):
+    esp32.set_hardware_mode(req.mode)
+    connected = esp32.check_connection()
+    return {
+        "ok": True,
+        "mode": esp32.hardware_mode,
+        "is_connected": connected,
+        "ping_ms": esp32.last_ping_ms
+    }
+
+
+@app.post("/api/robot/command")
+def execute_robot_command(req: RobotCommandRequest):
+    """
+    Standard machine-readable command endpoint:
+    {
+      "type": "robot_command",
+      "command": "FORWARD" | "STOP" | "BACKWARD" | "LEFT" | "RIGHT",
+      "speed": 70,
+      "timestamp": 123456789
+    }
+    """
+    global active_zone_id, last_client_heartbeat, active_motion_in_progress
+    last_client_heartbeat = time.time()
+    cmd_upper = req.command.upper().strip()
+
+    if cmd_upper == "EMERGENCY_STOP":
+        return execute_robot_estop()
+
+    active_motion_in_progress = (cmd_upper not in ("STOP", "RESET_ESTOP"))
+
+    resp = esp32.send_robot_command(command=cmd_upper, speed=req.speed or 120, duration_ms=req.duration_ms or 0)
+
+    # Track physical movement on field grid
+    dir_map = {
+        "FORWARD": "forward",
+        "BACKWARD": "backward",
+        "REV": "backward",
+        "LEFT": "left",
+        "RIGHT": "right"
+    }
+    if cmd_upper in dir_map:
+        loc = location_tracker.update_from_movement(dir_map[cmd_upper], req.speed or 120, req.duration_ms or 0)
+        active_zone_id = loc["zone_id"]
+
+    resp_dict = resp.model_dump()
+    resp_dict["robot_location"] = location_tracker.get_location()
+    return resp_dict
 
 
 @app.post("/api/robot/move")
@@ -322,6 +384,17 @@ def receive_robot_heartbeat(payload: Optional[Dict[str, Any]] = None):
 class NetworkConfigRequest(BaseModel):
     esp32_ip: str
     esp32_port: Optional[int] = 80
+
+
+def get_field_lan_ip() -> str:
+    """Discovers laptop's local field IP for smartphone connections."""
+    import socket
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("10.255.255.255", 1))
+            return s.getsockname()[0]
+    except Exception:
+        return "127.0.0.1"
 
 
 @app.get("/api/network/status")

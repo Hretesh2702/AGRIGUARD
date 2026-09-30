@@ -45,6 +45,9 @@ export interface NPKTelemetry {
   nitrogen_mg_kg: number;
   phosphorus_mg_kg: number;
   potassium_mg_kg: number;
+  n?: number | null;
+  p?: number | null;
+  k?: number | null;
   valid: boolean;
   status: string;
 }
@@ -53,7 +56,7 @@ export interface ActuatorsTelemetry {
   pump_active: boolean;
   valve_open: boolean;
   flow_rate_ml_s: number;
-  total_volume_ml: number;
+  total_volume_ml?: number;
   motor_state: string;
   motor_speed: number;
 }
@@ -61,11 +64,15 @@ export interface ActuatorsTelemetry {
 export interface SafetyTelemetry {
   emergency_stop: boolean;
   watchdog_tripped: boolean;
+  obstacle_detected?: boolean;
+  physical_estop_pin?: boolean;
   hardware_errors: string[];
 }
 
 export interface TelemetryData {
   esp32_connected: boolean;
+  hardware_mode?: "REAL_HARDWARE" | "SIMULATION";
+  connection_state?: "CONNECTED" | "DISCONNECTED" | "RECONNECTING";
   timestamp_ms: number;
   active_zone_id: string;
   camera_status: CameraStatus;

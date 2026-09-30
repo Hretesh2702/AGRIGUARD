@@ -21,7 +21,7 @@ import {
   Smartphone
 } from 'lucide-react';
 import { TelemetryData, NetworkStatus } from '../types';
-import { sendRobotHeartbeat, fetchNetworkStatus, updateNetworkConfig } from '../services/api';
+import { sendRobotHeartbeat, fetchNetworkStatus, updateNetworkConfig, fetchHardwareMode, setHardwareMode } from '../services/api';
 
 interface RobotControlsProps {
   telemetry: TelemetryData | null;
@@ -46,9 +46,16 @@ export const RobotControls: React.FC<RobotControlsProps> = ({
   const [pingMs, setPingMs] = useState<number | null>(null);
   const [heartbeatActive, setHeartbeatActive] = useState<boolean>(false);
   const [lastHeartbeatTime, setLastHeartbeatTime] = useState<string>('');
+  const [hardwareMode, setHardwareModeState] = useState<'REAL_HARDWARE' | 'SIMULATION'>('REAL_HARDWARE');
   const activeDirectionRef = useRef<string | null>(null);
   const pointerStartTimeRef = useRef<number>(0);
   const clickTimeoutRef = useRef<any>(null);
+
+  useEffect(() => {
+    fetchHardwareMode().then(res => {
+      if (res && res.mode) setHardwareModeState(res.mode as any);
+    }).catch(() => {});
+  }, []);
 
   const esp32Connected = telemetry?.esp32_connected ?? false;
   const isEStopActive = telemetry?.safety?.emergency_stop ?? false;
@@ -77,6 +84,10 @@ export const RobotControls: React.FC<RobotControlsProps> = ({
   // Unified movement helper
   const executeMove = useCallback(async (dir: string, pulseMs: number = 0) => {
     if (isEStopActive) return;
+    if (hardwareMode === 'REAL_HARDWARE' && !esp32Connected) {
+      console.warn('Real hardware is selected but ESP32 is offline. Motion command blocked.');
+      return;
+    }
     if (dir === 'stop') {
       await executeStop();
       return;
@@ -215,6 +226,29 @@ export const RobotControls: React.FC<RobotControlsProps> = ({
 
         {/* Network & Heartbeat Pill */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {/* Explicit Hardware Mode Switcher */}
+          <button
+            onClick={async () => {
+              const nextMode = hardwareMode === 'REAL_HARDWARE' ? 'SIMULATION' : 'REAL_HARDWARE';
+              try {
+                await setHardwareMode(nextMode);
+                setHardwareModeState(nextMode);
+              } catch (e) {
+                console.error('Mode switch error:', e);
+              }
+            }}
+            className="btn btn-outline"
+            style={{
+              padding: '0.25rem 0.5rem',
+              fontSize: '0.7rem',
+              borderColor: hardwareMode === 'REAL_HARDWARE' ? 'var(--emerald-500)' : 'var(--amber-500)',
+              color: hardwareMode === 'REAL_HARDWARE' ? 'var(--emerald-400)' : 'var(--amber-400)'
+            }}
+            title="Toggle between Real ESP32 Hardware and Simulation Sandbox"
+          >
+            <span>{hardwareMode === 'REAL_HARDWARE' ? 'REAL HARDWARE' : 'SIMULATION'}</span>
+          </button>
+
           <button
             onClick={() => setShowNetworkModal(true)}
             className="btn btn-outline"
@@ -225,10 +259,78 @@ export const RobotControls: React.FC<RobotControlsProps> = ({
             <span>Wi-Fi Setup</span>
           </button>
 
-          <div className={`status-pill ${esp32Connected ? 'status-online' : 'status-offline'}`} style={{ fontSize: '0.7rem' }}>
+          <div className={`status-pill ${
+            hardwareMode === 'REAL_HARDWARE'
+              ? (esp32Connected ? 'status-online' : 'status-offline')
+              : 'status-warning'
+          }`} style={{ fontSize: '0.7rem' }}>
             <Radio size={12} className={heartbeatActive ? 'animate-pulse' : ''} />
-            <span>{esp32Connected ? `ONLINE ${pingMs ? `(${pingMs}ms)` : ''}` : 'ESP32 OFFLINE (SIMULATED CONTROL)'}</span>
+            <span>
+              {hardwareMode === 'REAL_HARDWARE'
+                ? (esp32Connected ? `CONNECTED ${pingMs ? `(${pingMs}ms)` : ''}` : 'ROBOT OFFLINE')
+                : 'SIMULATED ROBOT'}
+            </span>
           </div>
+        </div>
+      </div>
+
+      {/* Minimal Connectivity & Sensor Health Bar */}
+      <div style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: '10px',
+        alignItems: 'center',
+        padding: '0.4rem 0.75rem',
+        background: 'rgba(0, 0, 0, 0.25)',
+        borderRadius: '8px',
+        border: '1px solid var(--border-subtle)',
+        marginBottom: '1rem',
+        fontSize: '0.72rem'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-muted)' }}>
+          <Wifi size={12} color="var(--emerald-400)" />
+          <span>Wi-Fi:</span>
+          <strong className="mono" style={{ color: '#fff' }}>{customEsp32Ip || '192.168.4.1'}</strong>
+        </div>
+
+        <div style={{ width: '1px', height: '14px', background: 'var(--border-subtle)' }} />
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span>
+            NPK:{' '}
+            <strong style={{ color: telemetry?.npk?.valid ? 'var(--emerald-400)' : 'var(--text-dim)' }}>
+              {telemetry?.npk?.valid ? 'ONLINE' : 'OFFLINE'}
+            </strong>
+          </span>
+          <span>
+            Soil:{' '}
+            <strong style={{ color: (telemetry?.soil_moisture?.moisture_pct !== null && telemetry?.soil_moisture?.valid !== false) ? 'var(--emerald-400)' : 'var(--text-dim)' }}>
+              {(telemetry?.soil_moisture?.moisture_pct !== null && telemetry?.soil_moisture?.valid !== false) ? 'ONLINE' : 'OFFLINE'}
+            </strong>
+          </span>
+          <span>
+            IMU:{' '}
+            <strong style={{ color: (telemetry?.imu?.pitch_deg !== null && telemetry?.imu?.valid !== false) ? 'var(--emerald-400)' : 'var(--text-dim)' }}>
+              {(telemetry?.imu?.pitch_deg !== null && telemetry?.imu?.valid !== false) ? 'ONLINE' : 'OFFLINE'}
+            </strong>
+          </span>
+        </div>
+
+        <div style={{ width: '1px', height: '14px', background: 'var(--border-subtle)' }} />
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span>
+            Pump:{' '}
+            <strong style={{ color: pumpActive ? 'var(--amber-400)' : 'var(--text-dim)' }}>
+              {pumpActive ? 'ON' : 'OFF'}
+            </strong>
+          </span>
+          <span>
+            Valve:{' '}
+            <strong style={{ color: valveOpen ? 'var(--amber-400)' : 'var(--text-dim)' }}>
+              {valveOpen ? 'OPEN' : 'CLOSED'}
+            </strong>
+          </span>
         </div>
       </div>
 

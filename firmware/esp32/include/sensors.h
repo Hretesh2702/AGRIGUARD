@@ -1,11 +1,24 @@
-#pragma once
+#if __has_include(<Arduino.h>)
+  #include <Arduino.h>
+  #include <Wire.h>
+  #include <DHT.h>
+  #include <Adafruit_MPU6050.h>
+  #include <Adafruit_Sensor.h>
+#elif __has_include("../../include/esp32_ide_stubs.h")
+  #include "../../include/esp32_ide_stubs.h"
+#endif
 
-#include <Arduino.h>
-#include <Wire.h>
-#include <DHT.h>
-#include <Adafruit_MPU6050.h>
-#include <Adafruit_Sensor.h>
-#include "config.h"
+#if __has_include("config.h")
+  #include "config.h"
+#elif __has_include("../include/config.h")
+  #include "../include/config.h"
+#endif
+
+#if __has_include("npk_modbus.h")
+  #include "npk_modbus.h"
+#elif __has_include("../include/npk_modbus.h")
+  #include "../include/npk_modbus.h"
+#endif
 
 struct NPKData {
     bool valid;

@@ -193,3 +193,40 @@ export async function updateNetworkConfig(esp32Ip: string, esp32Port: number = 8
   return res.json();
 }
 
+export async function fetchHardwareMode(): Promise<{ mode: string; is_connected: boolean; ping_ms: number | null }> {
+  try {
+    const res = await fetch(`${API_BASE}/api/robot/mode`);
+    if (!res.ok) return { mode: 'REAL_HARDWARE', is_connected: false, ping_ms: null };
+    return await res.json();
+  } catch {
+    return { mode: 'REAL_HARDWARE', is_connected: false, ping_ms: null };
+  }
+}
+
+export async function setHardwareMode(mode: 'REAL_HARDWARE' | 'SIMULATION'): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/robot/mode`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode })
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to set hardware mode: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function sendRobotCommand(command: string, speed: number = 120, durationMs: number = 0): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/robot/command`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      type: 'robot_command',
+      command: command.toUpperCase(),
+      speed,
+      duration_ms: durationMs,
+      timestamp: Date.now()
+    })
+  });
+  return res.json();
+}
+
