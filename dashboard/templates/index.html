@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgriGuard — AI-Powered Precision Farming Robot</title>
+    <meta name="description" content="Closed-loop AI crop doctor combining visual pathology diagnosis, soil NPK sensing, verified treatment guidance, and farmer-approved precision spraying.">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <!-- Top Navigation & Status Bar -->
+    <header class="app-header">
+        <div class="brand-section">
+            <div class="brand-logo">
+                <span class="logo-leaf">🌿</span>
+                <span class="logo-text">Agri<span class="logo-accent">Guard</span></span>
+            </div>
+            <div class="system-badge">NET ZERO AI ARCHITECTURE</div>
+        </div>
+
+        <div class="header-controls">
+            <!-- Demo Scenario Picker -->
+            <div class="control-group">
+                <label for="scenario-select" class="group-label">Demo Scenario:</label>
+                <select id="scenario-select" class="select-input">
+                    <option value="early_blight" selected>Tomato Early Blight (Alternaria solani)</option>
+                    <option value="late_blight">Tomato Late Blight (Phytophthora)</option>
+                    <option value="bacterial_spot">Bacterial Spot (Xanthomonas)</option>
+                    <option value="healthy">Healthy Tomato Foliage</option>
+                </select>
+            </div>
+
+            <!-- Mode Selector -->
+            <div class="mode-pill" id="mode-badge">
+                <span class="pulse-dot"></span>
+                <span id="mode-text">SIMULATION MODE</span>
+            </div>
+
+            <!-- Battery Gauge -->
+            <div class="battery-indicator" id="battery-indicator">
+                <div class="battery-icon">
+                    <div class="battery-fill" id="battery-fill" style="width: 86%;"></div>
+                </div>
+                <div class="battery-text">
+                    <span id="battery-pct">86%</span>
+                    <span class="voltage" id="battery-volts">(12.3V)</span>
+                </div>
+            </div>
+
+            <!-- Emergency Stop Button -->
+            <button id="btn-estop" class="btn-estop" title="Emergency Stop All Hardware">
+                <span class="estop-icon">🛑</span>
+                <span class="estop-text">E-STOP</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Workspace Grid -->
+    <main class="dashboard-grid">
+        <!-- PANEL 1: Live Video Feed & Camera Inspection -->
+        <section class="card panel-camera" id="panel-camera">
+            <div class="card-header">
+                <div class="card-title">
+                    <span class="card-icon">📷</span>
+                    <h2>Live Crop Camera Feed</h2>
+                </div>
+                <div class="camera-meta">
+                    <span class="badge badge-live">● LIVE HD</span>
+                    <span class="badge" id="camera-fps">25 FPS</span>
+                    <span class="badge badge-zone" id="badge-active-zone">ZONE-R2C2</span>
+                </div>
+            </div>
+
+            <div class="camera-viewport" id="camera-viewport">
+                <img id="live-stream-img" src="/video_feed" alt="Live Camera Video Stream" class="stream-view">
+                
+                <!-- HUD Targeting Reticle & Overlays -->
+                <div class="hud-overlay" id="hud-overlay">
+                    <div class="hud-corner top-left"></div>
+                    <div class="hud-corner top-right"></div>
+                    <div class="hud-corner bottom-left"></div>
+                    <div class="hud-corner bottom-right"></div>
+                    
+                    <div class="hud-crosshair">
+                        <div class="crosshair-ch"></div>
+                    </div>
+
+                    <div class="hud-diagnosis-badge" id="hud-diag-badge">
+                        <span id="hud-diag-title">TARGET: TOMATO LEAF</span>
+                        <span class="hud-sep">|</span>
+                        <span id="hud-diag-conf">READY</span>
+                    </div>
+
+                    <div class="spray-actuation-banner" id="spray-actuation-banner" style="display: none;">
+                        <div class="spray-pulse"></div>
+                        <span>PRECISION SPRAY IN PROGRESS (<span id="spray-countdown">2.5s</span>)</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="camera-actions">
+                <button id="btn-scan" class="btn btn-primary btn-glow">
+                    <span class="btn-icon">🔬</span>
+                    <span>Scan & Diagnose Crop</span>
+                </button>
+                <button id="btn-snapshot" class="btn btn-secondary">
+                    <span class="btn-icon">📸</span>
+                    <span>Snapshot</span>
+                </button>
+                <div class="inference-latency" id="inference-latency">
+                    Latency: <span id="val-latency">-- ms</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- PANEL 2: Crop Health & Disease Diagnosis -->
+        <section class="card panel-diagnosis" id="panel-diagnosis">
+            <div class="card-header">
+                <div class="card-title">
+                    <span class="card-icon">🩺</span>
+                    <h2>AI Crop Health Assessment</h2>
+                </div>
+                <span class="badge" id="model-tag">v1.2.0 Net</span>
+            </div>
+
+            <div class="diagnosis-body">
+                <div class="diagnosis-main-stat">
+                    <div class="health-score-container">
+                        <div class="score-circle" id="score-circle">
+                            <span class="score-number" id="diag-health-score">72</span>
+                            <span class="score-label">HEALTH</span>
+                        </div>
+                    </div>
+
+                    <div class="diagnosis-details">
+                        <div class="condition-name" id="diag-condition">Tomato Early Blight</div>
+                        <div class="pathogen-name" id="diag-pathogen">Alternaria solani (Fungal Pathogen)</div>
+                        
+                        <div class="metric-row">
+                            <div class="metric-col">
+                                <span class="metric-label">Confidence</span>
+                                <div class="progress-bar-wrap">
+                                    <div class="progress-bar-fill fill-cyan" id="diag-conf-bar" style="width: 94%;"></div>
+                                </div>
+                                <span class="metric-val" id="diag-conf-val">94.0%</span>
+                            </div>
+                            <div class="metric-col">
+                                <span class="metric-label">Severity</span>
+                                <span class="severity-pill pill-moderate" id="diag-severity-pill">Moderate</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Symptoms and Observations -->
+                <div class="symptom-box" id="symptom-box">
+                    <strong>Observed Symptoms:</strong>
+                    <p id="diag-symptoms-text">Dark brown spots with concentric 'bullseye' rings on lower foliage with chlorotic yellow halo.</p>
+                </div>
+
+                <!-- Contextual Alerts (Nutrient or Climate warnings) -->
+                <div class="alert-box" id="context-alert-box" style="display: none;">
+                    <span class="alert-icon">⚠️</span>
+                    <span id="context-alert-text">Alert message</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- PANEL 3: Real-Time Sensor Telemetry -->
+        <section class="card panel-sensors" id="panel-sensors">
+            <div class="card-header">
+                <div class="card-title">
+                    <span class="card-icon">📊</span>
+                    <h2>Field Sensor Telemetry</h2>
+                </div>
+                <span class="badge badge-success">MODBUS RS485 ACTIVE</span>
+            </div>
+
+            <div class="sensors-grid">
+                <!-- NPK Trio -->
+                <div class="sensor-card npk-card">
+                    <div class="sensor-title">Soil Macronutrients (NPK)</div>
+                    <div class="npk-row">
+                        <div class="npk-item">
+                            <span class="npk-elem">N</span>
+                            <span class="npk-val" id="val-n">Normal</span>
+                            <span class="npk-unit" id="unit-n">48 mg/kg</span>
+                        </div>
+                        <div class="npk-item">
+                            <span class="npk-elem">P</span>
+                            <span class="npk-val" id="val-p">Normal</span>
+                            <span class="npk-unit" id="unit-p">32 mg/kg</span>
+                        </div>
+                        <div class="npk-item">
+                            <span class="npk-elem">K</span>
+                            <span class="npk-val" id="val-k">Normal</span>
+                            <span class="npk-unit" id="unit-k">55 mg/kg</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Soil Moisture -->
+                <div class="sensor-card">
+                    <div class="sensor-title">Soil Moisture</div>
+                    <div class="sensor-big-val" id="val-moisture">34.5<span class="unit">%</span></div>
+                    <div class="progress-bar-wrap">
+                        <div class="progress-bar-fill fill-blue" id="bar-moisture" style="width: 35%;"></div>
+                    </div>
+                    <span class="sub-status" id="moisture-status">Adequate Hydration</span>
+                </div>
+
+                <!-- Microclimate -->
+                <div class="sensor-card">
+                    <div class="sensor-title">Microclimate</div>
+                    <div class="climate-split">
+                        <div>
+                            <span class="climate-lbl">Temp</span>
+                            <span class="climate-val" id="val-temp">27.2°C</span>
+                        </div>
+                        <div>
+                            <span class="climate-lbl">Humidity</span>
+                            <span class="climate-val" id="val-humidity">66.0%</span>
+                        </div>
+                    </div>
+                    <span class="sub-status">Moderate Evaporation</span>
+                </div>
+
+                <!-- Sonar & Flow -->
+                <div class="sensor-card">
+                    <div class="sensor-title">Obstacle & Spray Flow</div>
+                    <div class="climate-split">
+                        <div>
+                            <span class="climate-lbl">Clearance</span>
+                            <span class="climate-val" id="val-sonar">115 cm</span>
+                        </div>
+                        <div>
+                            <span class="climate-lbl">Flow Rate</span>
+                            <span class="climate-val" id="val-flow">0.0 mL/s</span>
+                        </div>
+                    </div>
+                    <span class="sub-status" id="flow-status">Nozzle Standby</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- PANEL 4: Treatment Recommendation & Tank Inventory -->
+        <section class="card panel-treatment" id="panel-treatment">
+            <div class="card-header">
+                <div class="card-title">
+                    <span class="card-icon">🧪</span>
+                    <h2>Verified Treatment & Actuation Gate</h2>
+                </div>
+                <div class="approval-tag pending" id="approval-status-tag">PENDING FARMER APPROVAL</div>
+            </div>
+
+            <div class="treatment-body">
+                <!-- Verified Prescription Box -->
+                <div class="prescription-box">
+                    <div class="prescription-header">
+                        <span class="rx-icon">📋</span>
+                        <div class="rx-name" id="rx-treatment-name">Copper Hydroxide 77% WP</div>
+                        <span class="rx-category badge" id="rx-category">Fungicide / Protectant</span>
+                    </div>
+
+                    <div class="rx-specs">
+                        <div class="rx-spec-item">
+                            <span class="rx-label">Configured Dose:</span>
+                            <span class="rx-val" id="rx-dose">2.0 g/L (0.2% concentration)</span>
+                        </div>
+                        <div class="rx-spec-item">
+                            <span class="rx-label">Application Method:</span>
+                            <span class="rx-val" id="rx-method">Targeted foliar misting directly onto lower canopy lesions</span>
+                        </div>
+                        <div class="rx-spec-item">
+                            <span class="rx-label">Spray Duration & Vol:</span>
+                            <span class="rx-val" id="rx-duration">2500 ms (~40 mL)</span>
+                        </div>
+                        <div class="rx-spec-item">
+                            <span class="rx-label">Verified Reference:</span>
+                            <span class="rx-val text-muted" id="rx-source">USDA-ARS & ICAR Plant Protection Handbook</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Onboard Tank Inventory -->
+                <div class="tanks-section">
+                    <div class="tanks-header">
+                        <span>Onboard Chemical Tanks</span>
+                        <button id="btn-refill-all" class="btn-text">Refill Tanks</button>
+                    </div>
+                    <div class="tanks-list" id="tanks-list">
+                        <!-- Tank 1 -->
+                        <div class="tank-item" id="tank-copper">
+                            <div class="tank-info">
+                                <span class="tank-name">Copper Hydroxide 77%</span>
+                                <span class="tank-vol" id="tank-copper-vol">750 / 1000 mL</span>
+                            </div>
+                            <div class="progress-bar-wrap">
+                                <div class="progress-bar-fill fill-cyan" id="tank-copper-bar" style="width: 75%;"></div>
+                            </div>
+                            <span class="tank-status badge-success">READY</span>
+                        </div>
+                        <!-- Tank 2 -->
+                        <div class="tank-item" id="tank-neem">
+                            <div class="tank-info">
+                                <span class="tank-name">Bio-Neem Organic Oil</span>
+                                <span class="tank-vol" id="tank-neem-vol">600 / 800 mL</span>
+                            </div>
+                            <div class="progress-bar-wrap">
+                                <div class="progress-bar-fill fill-emerald" id="tank-neem-bar" style="width: 75%;"></div>
+                            </div>
+                            <span class="tank-status badge-success">READY</span>
+                        </div>
+                        <!-- Tank 3 -->
+                        <div class="tank-item" id="tank-water">
+                            <div class="tank-info">
+                                <span class="tank-name">Clean Rinse / Test Liquid</span>
+                                <span class="tank-vol" id="tank-water-vol">1100 / 1200 mL</span>
+                            </div>
+                            <div class="progress-bar-wrap">
+                                <div class="progress-bar-fill fill-blue" id="tank-water-bar" style="width: 91%;"></div>
+                            </div>
+                            <span class="tank-status badge-success">READY</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Farmer-in-the-Loop Action Gate -->
+                <div class="action-gate">
+                    <p class="gate-note">
+                        🔒 <strong>Safety Lock:</strong> Actuation pump and solenoid valve will remain inert until you verify the diagnosis and approve the targeted spray command.
+                    </p>
+                    <div class="gate-buttons">
+                        <button id="btn-approve-spray" class="btn btn-approve btn-glow">
+                            <span class="btn-icon">🎯</span>
+                            <span>Approve & Spray Now</span>
+                        </button>
+                        <button id="btn-reject-treatment" class="btn btn-secondary">
+                            <span class="btn-icon">✖</span>
+                            <span>Dismiss</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- PANEL 5: Robot Remote Drive & Mobility -->
+        <section class="card panel-robot-control" id="panel-robot-control">
+            <div class="card-header">
+                <div class="card-title">
+                    <span class="card-icon">🎮</span>
+                    <h2>Remote Mobility Controller</h2>
+                </div>
+                <span class="badge" id="robot-state-badge">STOPPED</span>
+            </div>
+
+            <div class="control-body">
+                <!-- D-Pad Directional Controls -->
+                <div class="dpad-container">
+                    <button class="dpad-btn dpad-up" id="btn-fwd" title="Forward (W)">▲</button>
+                    <button class="dpad-btn dpad-left" id="btn-left" title="Turn Left (A)">◀</button>
+                    <button class="dpad-btn dpad-stop" id="btn-stop" title="Stop (Space)">STOP</button>
+                    <button class="dpad-btn dpad-right" id="btn-right" title="Turn Right (D)">▶</button>
+                    <button class="dpad-btn dpad-down" id="btn-back" title="Reverse (S)">▼</button>
+                </div>
+
+                <!-- Speed Control Slider -->
+                <div class="speed-slider-wrap">
+                    <div class="slider-header">
+                        <span>Motor PWM Throttle</span>
+                        <span id="speed-display">120 / 255</span>
+                    </div>
+                    <input type="range" id="slider-speed" min="50" max="255" value="120" class="range-slider">
+                </div>
+
+                <div class="keyboard-legend">
+                    <span>Keys: <code>W</code> <code>A</code> <code>S</code> <code>D</code> | <code>Space</code> to Halt</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- PANEL 6: Field Zone Matrix & Audit Activity Log -->
+        <section class="card panel-field-map" id="panel-field-map">
+            <div class="card-header">
+                <div class="card-title">
+                    <span class="card-icon">🗺️</span>
+                    <h2>Field Matrix & Historical Heatmap</h2>
+                </div>
+                <div class="map-legend">
+                    <span class="legend-item"><span class="dot dot-healthy"></span> Healthy</span>
+                    <span class="legend-item"><span class="dot dot-monitor"></span> Monitor</span>
+                    <span class="legend-item"><span class="dot dot-infected"></span> Infected</span>
+                    <span class="legend-item"><span class="dot dot-treated"></span> Treated</span>
+                </div>
+            </div>
+
+            <div class="field-map-body">
+                <!-- 4x6 Field Grid -->
+                <div class="field-grid" id="field-grid">
+                    <!-- Populated dynamically via JS -->
+                </div>
+
+                <!-- Activity Log Feed -->
+                <div class="activity-feed">
+                    <div class="feed-title">Recent Interventions & Scans</div>
+                    <div class="feed-list" id="feed-list">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal Confirmation for Spray Actuation -->
+    <div class="modal-backdrop" id="spray-modal" style="display: none;">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>Confirm Precision Intervention</h3>
+                <button class="modal-close" id="btn-modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>You are about to authorize the physical spray actuation on <strong><span id="modal-zone-id">ZONE-R2C2</span></strong>.</p>
+                <div class="modal-summary">
+                    <div><strong>Target Condition:</strong> <span id="modal-condition">Tomato Early Blight</span></div>
+                    <div><strong>Chemical:</strong> <span id="modal-chemical">Copper Hydroxide 77%</span></div>
+                    <div><strong>Dosage Volume:</strong> <span id="modal-volume">~40 mL</span></div>
+                    <div><strong>Pulse Duration:</strong> <span id="modal-duration">2500 ms</span></div>
+                </div>
+                <div class="safety-warning">
+                    ⚠️ Ensure field personnel maintain safety clearance before engaging pump and nozzle valve.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="btn-modal-cancel">Cancel</button>
+                <button class="btn btn-approve btn-glow" id="btn-modal-confirm">Confirm & Fire Nozzle</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

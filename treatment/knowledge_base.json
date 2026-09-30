@@ -1,0 +1,192 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2026-06-15",
+  "crops": {
+    "tomato": {
+      "display_name": "Tomato (Solanum lycopersicum)",
+      "conditions": {
+        "early_blight": {
+          "condition_id": "tomato_early_blight",
+          "display_name": "Early Blight",
+          "pathogen": "Alternaria solani (Fungus)",
+          "symptoms": "Dark brown to black spots with concentric rings ('bullseye' pattern) on older lower leaves, leaf yellowing (chlorosis) around lesions.",
+          "severity_classification": {
+            "mild": "Small isolated lesions (<5mm) on bottom leaves only",
+            "moderate": "Multiple concentric lesions, lower leaves turning yellow, spreading to mid-canopy",
+            "severe": "Extensive defoliation, stem lesions, canopy loss >40%"
+          },
+          "treatments": [
+            {
+              "treatment_id": "TRT_TOM_EB_COPPER",
+              "treatment_name": "Copper Hydroxide 77% WP",
+              "category": "Fungicide / Protectant",
+              "inventory_item_id": "TANK_COPPER_FUNGICIDE",
+              "configured_dose_reference": "2.0 g/L (0.2% concentration)",
+              "application_method": "Precision foliar misting targeting lower canopy lesions",
+              "spray_duration_ms": 2500,
+              "spray_volume_est_ml": 40,
+              "safety_notes": "Wear respirator & nitrile gloves. 48-hour re-entry interval. Toxic to aquatic life.",
+              "environmental_restrictions": {
+                "max_humidity_pct": 88,
+                "max_wind_speed_kmh": 12,
+                "min_temp_c": 12,
+                "max_temp_c": 32
+              },
+              "source": "USDA-ARS Vegetable Crop Pathology & ICAR Plant Protection Handbook",
+              "verified_by": "Senior Agricultural Extension Pathologist",
+              "last_verified": "2026-06-15"
+            },
+            {
+              "treatment_id": "TRT_TOM_EB_NEEM",
+              "treatment_name": "Cold-Pressed Bio-Neem Oil (Azadirachtin 0.03%)",
+              "category": "Organic Bio-Pesticide",
+              "inventory_item_id": "TANK_NEEM_ORGANIC",
+              "configured_dose_reference": "5.0 mL/L with mild emulsifier",
+              "application_method": "Targeted wetting of affected leaves at early symptom stage",
+              "spray_duration_ms": 3000,
+              "spray_volume_est_ml": 50,
+              "safety_notes": "Organic certified. Safe for beneficial pollinators if sprayed late evening.",
+              "environmental_restrictions": {
+                "max_humidity_pct": 92,
+                "max_wind_speed_kmh": 15,
+                "min_temp_c": 15,
+                "max_temp_c": 30
+              },
+              "source": "OMRI Listed Organic Agriculture Materials Review",
+              "verified_by": "Certified Agronomist",
+              "last_verified": "2026-06-15"
+            }
+          ]
+        },
+        "late_blight": {
+          "condition_id": "tomato_late_blight",
+          "display_name": "Late Blight",
+          "pathogen": "Phytophthora infestans (Oomycete)",
+          "symptoms": "Large, dark, water-soaked lesions on leaves and stems with white fungal fuzz on leaf undersides under humid conditions.",
+          "severity_classification": {
+            "mild": "Water-soaked irregular spots on edge of leaf tips",
+            "moderate": "Fast-expanding grey-green lesions with white fungal growth on undersides",
+            "severe": "Systemic collapse, blackened stems, rotting fruit"
+          },
+          "treatments": [
+            {
+              "treatment_id": "TRT_TOM_LB_CYMOXANIL",
+              "treatment_name": "Cymoxanil + Mancozeb Blend",
+              "category": "Curative / Protectant Fungicide",
+              "inventory_item_id": "TANK_COPPER_FUNGICIDE",
+              "configured_dose_reference": "2.5 g/L",
+              "application_method": "High-pressure fine cone nozzle spray coating leaf undersides",
+              "spray_duration_ms": 3500,
+              "spray_volume_est_ml": 60,
+              "safety_notes": "High potency. Mandatory PPE. 7-day harvest interval.",
+              "environmental_restrictions": {
+                "max_humidity_pct": 95,
+                "max_wind_speed_kmh": 10,
+                "min_temp_c": 10,
+                "max_temp_c": 28
+              },
+              "source": "FAO Integrated Pest Management Guidelines for Tomato",
+              "verified_by": "Extension Plant Pathologist",
+              "last_verified": "2026-06-15"
+            }
+          ]
+        },
+        "bacterial_spot": {
+          "condition_id": "tomato_bacterial_spot",
+          "display_name": "Bacterial Spot",
+          "pathogen": "Xanthomonas perforans (Bacteria)",
+          "symptoms": "Small (1-3mm) circular dark brown/black spots on leaves surrounded by a yellow halo, greasy appearance on underside.",
+          "severity_classification": {
+            "mild": "Few scattered dark speckles (<10 per leaf)",
+            "moderate": "Dense speckling, chlorosis, ragged hole formation",
+            "severe": "Extensive leaf scorch and premature drop"
+          },
+          "treatments": [
+            {
+              "treatment_id": "TRT_TOM_BS_COPPER_MANCOZEB",
+              "treatment_name": "Fixed Copper + Bio-Bactericide (Bacillus amyloliquefaciens)",
+              "category": "Bactericide / Protective Complex",
+              "inventory_item_id": "TANK_COPPER_FUNGICIDE",
+              "configured_dose_reference": "2.0 g/L Copper + 2 mL/L Bio-culture",
+              "application_method": "Precision targeted canopy misting",
+              "spray_duration_ms": 2500,
+              "spray_volume_est_ml": 40,
+              "safety_notes": "Avoid spraying when foliage is wet. Rotate modes of action to prevent resistance.",
+              "environmental_restrictions": {
+                "max_humidity_pct": 85,
+                "max_wind_speed_kmh": 12,
+                "min_temp_c": 14,
+                "max_temp_c": 32
+              },
+              "source": "Cornell Cooperative Extension Disease Management Sheet",
+              "verified_by": "Agricultural Extension Officer",
+              "last_verified": "2026-06-15"
+            }
+          ]
+        },
+        "septoria_leaf_spot": {
+          "condition_id": "tomato_septoria_leaf_spot",
+          "display_name": "Septoria Leaf Spot",
+          "pathogen": "Septoria lycopersici (Fungus)",
+          "symptoms": "Numerous small circular spots with grey centers and dark margins; tiny dark pycnidia specks inside spots.",
+          "severity_classification": {
+            "mild": "Scattered spots on lowest older leaves",
+            "moderate": "Spots coalesce, lower foliage blighting",
+            "severe": "Upward progression, complete defoliation of lower two-thirds"
+          },
+          "treatments": [
+            {
+              "treatment_id": "TRT_TOM_SEPT_CHLOROTHALONIL",
+              "treatment_name": "Chlorothalonil 75% WP",
+              "category": "Broad-Spectrum Contact Fungicide",
+              "inventory_item_id": "TANK_COPPER_FUNGICIDE",
+              "configured_dose_reference": "2.2 g/L",
+              "application_method": "Precision downward spray directly onto diseased leaf area",
+              "spray_duration_ms": 2500,
+              "spray_volume_est_ml": 40,
+              "safety_notes": "Full protective suit and respirator. Avoid non-target drift.",
+              "environmental_restrictions": {
+                "max_humidity_pct": 90,
+                "max_wind_speed_kmh": 10,
+                "min_temp_c": 12,
+                "max_temp_c": 30
+              },
+              "source": "Purdue Extension Plant Disease Series",
+              "verified_by": "Certified Agronomist",
+              "last_verified": "2026-06-15"
+            }
+          ]
+        },
+        "healthy": {
+          "condition_id": "tomato_healthy",
+          "display_name": "Healthy Plant",
+          "pathogen": "None (Normal vigor)",
+          "symptoms": "Lush green foliage, normal turgor, no visible lesions, chlorosis or necrotic tissue.",
+          "severity_classification": {
+            "mild": "N/A",
+            "moderate": "N/A",
+            "severe": "N/A"
+          },
+          "treatments": []
+        }
+      }
+    }
+  },
+  "sensor_context_rules": {
+    "nitrogen_deficiency": {
+      "trigger": "n_level == 'low' and visual_yellowing == true",
+      "guidance": "Symptom appears related to Nitrogen deficiency rather than fungal blight. Recommended action: Soil side-dressing or fertigation with nitrogen-rich amendment. Do NOT apply foliar fungicides.",
+      "allow_spray": false
+    },
+    "soil_drought_stress": {
+      "trigger": "soil_moisture < 20",
+      "guidance": "Critically low soil moisture detected (drought stress). Applying chemical sprays during severe water stress can cause chemical leaf burn. Recommended action: Irrigate first.",
+      "allow_spray": false
+    },
+    "high_humidity_blight_risk": {
+      "trigger": "humidity_pct > 85 and temperature_c >= 20 and temperature_c <= 28",
+      "guidance": "High temperature-humidity disease window active. Conditions favor spore germination and rapid spread.",
+      "allow_spray": true
+    }
+  }
+}

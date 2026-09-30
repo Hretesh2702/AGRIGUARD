@@ -1,0 +1,92 @@
+# AgriGuard — Sensors Configuration
+# Calibration constants, Modbus register maps, and polling intervals for physical sensors
+
+npk_sensor:
+  enabled: true
+  protocol: "modbus_rtu"
+  interface: "rs485"
+  slave_id: 1                      # Default factory Modbus address for 3-in-1 / 7-in-1 soil probes
+  baud_rate: 9600
+  data_bits: 8
+  parity: "none"
+  stop_bits: 1
+  function_code: 3                 # 0x03: Read Holding Registers
+  polling_interval_ms: 1000        # Query rate (soil chemistry does not change faster than 1Hz)
+  timeout_ms: 200
+
+  # Register Map (Configurable per exact sensor datasheet)
+  # Standard 3-in-1 soil probe: Holding registers starting at 0x001E (30 decimal) or 0x0000
+  registers:
+    nitrogen_register: 0x001E      # 30 dec: Nitrogen content
+    phosphorus_register: 0x001F    # 31 dec: Phosphorus content
+    potassium_register: 0x0020     # 32 dec: Potassium content
+    register_count: 3
+    scale_factor: 1.0              # Direct integer reading in mg/kg (ppm)
+
+  # Agronomic Threshold Ranges for Tomato (Solanum lycopersicum)
+  thresholds_mg_kg:
+    nitrogen:
+      low: 35
+      optimal_min: 40
+      optimal_max: 90
+      high: 120
+    phosphorus:
+      low: 20
+      optimal_min: 25
+      optimal_max: 60
+      high: 80
+    potassium:
+      low: 30
+      optimal_min: 45
+      optimal_max: 100
+      high: 140
+
+soil_moisture:
+  sensor_type: "capacitive_v1.2"   # Corrosion-resistant capacitive probe
+  adc_pin: 34
+  adc_resolution: 4095             # 12-bit ESP32 ADC
+  samples_to_average: 10
+  # Calibration:
+  # Air reading (0% moisture): ~3200 ADC
+  # Water reading (100% saturation): ~1450 ADC
+  calibration:
+    dry_adc_value: 3200
+    wet_adc_value: 1450
+  thresholds_pct:
+    critical_drought_pct: 20.0     # CONTRAINDICATION: Do NOT apply chemical foliar sprays below 20%
+    optimal_min_pct: 35.0
+    optimal_max_pct: 70.0
+    waterlogged_pct: 85.0
+
+environment:
+  dht22:
+    enabled: true
+    pin: 15
+    min_interval_ms: 2000          # DHT22 requires min 2s between reads
+  safe_spray_limits:
+    max_ambient_temp_c: 33.0       # Evaporation & phytotoxicity risk above 33°C
+    min_ambient_temp_c: 12.0
+    max_relative_humidity_pct: 90.0# Dew/drip loss risk above 90%
+
+ultrasonic:
+  model: "HC-SR04"
+  trig_pin: 4
+  echo_pin: 5
+  max_range_cm: 300.0
+  min_obstacle_stop_cm: 25.0       # Autonomous emergency stop if obstacle closer than 25cm
+  sound_speed_cm_us: 0.0343
+
+imu:
+  model: "MPU6050"
+  i2c_address: 0x68
+  accel_range_g: 2
+  gyro_range_deg_s: 250
+  sample_rate_hz: 50
+  tip_angle_warning_deg: 25.0      # Tip-over warning on steep agricultural ruts
+
+flow_sensor:
+  model: "YF-S401"
+  interrupt_pin: 27
+  pulses_per_liter: 5880           # YF-S401 calibration factor (~98 pulses per 100mL)
+  pulse_timeout_ms: 500
+  no_flow_threshold_ml_s: 2.0

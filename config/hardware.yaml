@@ -1,0 +1,75 @@
+# AgriGuard — Hardware Configuration
+# Central physical parameters and GPIO mappings for ESP32 and laptop subsystems
+
+system:
+  name: "AgriGuard Precision Farming Robot"
+  model: "AG-PROTOTYPE-V1"
+  controller: "ESP32-WROOM-32"
+  laptop_role: "Vision Processing, AI Inference, Treatment Decision Engine, Web Dashboard"
+
+esp32:
+  wifi:
+    mode: "soft_ap_or_sta"         # "ap" for standalone field SoftAP, "sta" for existing greenhouse Wi-Fi
+    ap_ssid: "AgriGuard-Robot"
+    ap_password: "agri12345password" # WPA2 PSK (min 8 chars)
+    sta_ssid: ""                   # Set when connecting to greenhouse Wi-Fi
+    sta_password: ""
+    http_port: 80
+    websocket_port: 81
+    mdns_hostname: "agriguard"     # Resolves to agriguard.local
+
+  safety_watchdog:
+    comm_timeout_ms: 1500          # Stop motors if no command/heartbeat within 1.5 seconds
+    max_spray_duration_ms: 6000    # Hard maximum pulse duration for pump/solenoid (prevents flooding)
+    flow_verification_delay_ms: 600# Time after pump ON before verifying non-zero flow from flow sensor
+    min_required_flow_ml_s: 3.0    # Fault triggered if flow rate is below this threshold during spray
+    default_state: "SAFE_OFF"      # All motors OFF, pump OFF, valve CLOSED on boot
+
+  gpios:
+    # L298N Dual H-Bridge Motor Driver
+    motors:
+      left_pwm_ena: 13             # Hardware LEDC PWM Channel 0
+      left_in1: 12                 # Direction Left 1
+      left_in2: 14                 # Direction Left 2
+      right_pwm_enb: 23            # Hardware LEDC PWM Channel 1
+      right_in3: 19                # Direction Right 1
+      right_in4: 18                # Direction Right 2
+      pwm_frequency_hz: 1000       # Motor PWM frequency
+      pwm_resolution_bits: 8       # 0-255 duty cycle
+
+    # Precision Spray Actuation
+    spray:
+      pump_relay_mosfet: 25        # Active HIGH -> gates 12V Diaphragm Pump MOSFET
+      solenoid_valve_mosfet: 26    # Active HIGH -> opens 12V Solenoid Valve MOSFET
+      flow_sensor_interrupt: 27    # YF-S401 / YF-S201 pulse input (pullup enabled)
+
+    # Environmental & Proximity Sensors
+    sensors:
+      ultrasonic_trig: 4           # HC-SR04 Trigger (Output)
+      ultrasonic_echo: 5           # HC-SR04 Echo (Input via 5V->3.3V voltage divider!)
+      soil_moisture_adc: 34        # Capacitive Soil Moisture Sensor (ADC1 CH6, Input Only)
+      dht22_temp_humidity: 15      # DHT22 One-Wire Data Pin (pullup resistor required)
+      i2c_sda: 21                  # MPU6050 IMU I2C Data
+      i2c_scl: 22                  # MPU6050 IMU I2C Clock
+
+    # RS485 Modbus RTU (NPK Sensor) via MAX485 TTL Transceiver
+    rs485_npk:
+      uart_num: 2                  # HardwareSerial(2)
+      rx_pin: 16                   # ESP32 RX2 <- MAX485 RO (Receiver Output)
+      tx_pin: 17                   # ESP32 TX2 -> MAX485 DI (Driver Input)
+      de_re_control_pin: 33        # MAX485 DE & !RE jumpered together (Direction control)
+
+    # Signaling & Safety Inputs
+    safety_ui:
+      emergency_stop_pin: 32       # Normally closed pushbutton to GND (Internal Pullup, Active LOW)
+      status_led_pin: 2            # Onboard Blue LED (Status indicator)
+      buzzer_pin: 0                # Active Piezo Buzzer (Warning beeps)
+
+camera:
+  device_index: 0                  # External USB Camera index (0, 1, or /dev/video0)
+  auto_detect: true
+  frame_width: 1280
+  frame_height: 720
+  target_fps: 120
+  save_snapshots: true
+  snapshot_dir: "data/snapshots"

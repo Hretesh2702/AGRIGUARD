@@ -1,0 +1,215 @@
+import React, { useState } from 'react';
+import { useTelemetry } from './hooks/useTelemetry';
+import { Header } from './components/Header';
+import { CameraView } from './components/CameraView';
+import { DiagnosisCard } from './components/DiagnosisCard';
+import { TelemetryCard } from './components/TelemetryCard';
+import { TreatmentCard } from './components/TreatmentCard';
+import { RobotControls } from './components/RobotControls';
+import { FieldHeatmap } from './components/FieldHeatmap';
+import { DiagnosticsPage } from './pages/DiagnosticsPage';
+import { SidebarHero } from './components/SidebarHero';
+import { AIDetection, TreatmentDecision } from './types';
+import {
+  runCropScan,
+  approveTreatment,
+  sendRobotMove,
+  sendRobotStop,
+  sendEmergencyStop
+} from './services/api';
+
+export const App: React.FC = () => {
+  const { telemetry, wsConnected } = useTelemetry();
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'remote' | 'diagnostics' | 'heatmap'>('dashboard');
+  const [activeZoneId, setActiveZoneId] = useState<string>('ZONE-R1C1');
+
+  const [lastDetection, setLastDetection] = useState<AIDetection | null>(null);
+  const [lastDecision, setLastDecision] = useState<TreatmentDecision | null>(null);
+  const [isScanning, setIsScanning] = useState<boolean>(false);
+  const [scanNotification, setScanNotification] = useState<string | null>(null);
+
+  // Trigger Real AI Camera Scan
+  const handleTriggerScan = async (frameBase64?: string) => {
+    setIsScanning(true);
+    setScanNotification(null);
+    try {
+      const res = await runCropScan(frameBase64);
+      setLastDetection(res.detection);
+      setLastDecision(res.decision);
+      setScanNotification(`Analysis complete: ${res.detection.display_name} (${(res.detection.confidence * 100).toFixed(0)}%)`);
+    } catch (err: any) {
+      setScanNotification(`Scan error: ${err.message || 'Camera capture failed'}`);
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  // Farmer Approval Action
+  const handleApproveTreatment = async (decisionId: string, approved: boolean, operatorName: string) => {
+    const res = await approveTreatment(decisionId, approved, operatorName);
+    if (lastDecision) {
+      setLastDecision({
+        ...lastDecision,
+        approved: approved,
+        status: approved ? 'FARMER_APPROVED_EXECUTED' : 'REJECTED_BY_FARMER'
+      });
+    }
+    return res;
+  };
+
+  // Robot Directional Commands
+  const handleMove = async (direction: string, speed: number, durationMs: number = 0) => {
+    return await sendRobotMove(direction, speed, durationMs);
+  };
+
+  const handleStop = async () => {
+    return await sendRobotStop();
+  };
+
+  const handleEmergencyStop = async () => {
+    return await sendEmergencyStop();
+  };
+
+  return (
+    <div style={{ maxWidth: '1780px', margin: '0 auto', padding: '1rem' }}>
+      {/* Workspace with Left Sidebar */}
+      <div className="dashboard-with-sidebar">
+        {/* Left Sidebar */}
+        <aside className="dashboard-sidebar">
+          {/* Header Console (Brand, E-Stop, Navigation Tabs & Status Pills) */}
+          <Header
+            telemetry={telemetry}
+            wsConnected={wsConnected}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            onEmergencyStop={handleEmergencyStop}
+          />
+
+          {/* Sidebar Hero Section */}
+          <SidebarHero />
+        </aside>
+
+        {/* Main Tab Content */}
+        <main className="dashboard-main-content">
+        {activeTab === 'dashboard' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            
+            {/* Scan Notification Banner */}
+            {scanNotification && (
+              <div style={{
+                padding: '0.65rem 1rem',
+                borderRadius: '8px',
+                background: scanNotification.includes('error') ? 'rgba(244, 63, 94, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                border: `1px solid ${scanNotification.includes('error') ? 'var(--rose-500)' : 'var(--emerald-500)'}`,
+                color: '#fff',
+                fontSize: '0.85rem'
+              }}>
+                {scanNotification}
+              </div>
+            )}
+
+            {/* HERO SECTION — SIDE MANNER COCKPIT */}
+            <section className="hero-cockpit-layout">
+              {/* Hero Primary Visual: Live Real-Time Camera Feed */}
+              <div className="hero-primary-column">
+                <CameraView
+                  cameraStatus={telemetry?.camera_status}
+                  lastDetection={lastDetection}
+                  isScanning={isScanning}
+                  onTriggerScan={handleTriggerScan}
+                  activeZoneId={telemetry?.active_zone_id ?? activeZoneId}
+                  telemetry={telemetry}
+                  onMove={handleMove}
+                  onStop={handleStop}
+                />
+              </div>
+
+              {/* Hero Side Section: Intelligence, Diagnosis & Prescription Gate */}
+              <div className="hero-side-column">
+                <DiagnosisCard
+                  detection={lastDetection}
+                  telemetry={telemetry}
+                />
+
+                <TreatmentCard
+                  decision={lastDecision}
+                  telemetry={telemetry}
+                  onApprove={handleApproveTreatment}
+                />
+              </div>
+            </section>
+
+            {/* SECONDARY SECTION: Real Sensor Field Telemetry */}
+            <section style={{ width: '100%' }}>
+              <TelemetryCard telemetry={telemetry} />
+            </section>
+          </div>
+        )}
+
+        {activeTab === 'remote' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', maxWidth: '800px', margin: '0 auto' }}>
+            <CameraView
+              cameraStatus={telemetry?.camera_status}
+              lastDetection={lastDetection}
+              isScanning={isScanning}
+              onTriggerScan={handleTriggerScan}
+              activeZoneId={telemetry?.active_zone_id ?? activeZoneId}
+              telemetry={telemetry}
+              onMove={handleMove}
+              onStop={handleStop}
+            />
+
+            <RobotControls
+              telemetry={telemetry}
+              onMove={handleMove}
+              onStop={handleStop}
+              onEmergencyStop={handleEmergencyStop}
+              onSprayApprove={handleApproveTreatment}
+            />
+
+            <TelemetryCard telemetry={telemetry} />
+          </div>
+        )}
+
+        {activeTab === 'diagnostics' && (
+          <DiagnosticsPage />
+        )}
+
+        {activeTab === 'heatmap' && (
+          <div className="field-map-cockpit-layout">
+            {/* Left Column: Interactive Field Pathology Heatmap */}
+            <div className="field-map-primary-column">
+              <FieldHeatmap
+                activeZoneId={telemetry?.active_zone_id ?? activeZoneId}
+                onZoneSelected={(zid) => setActiveZoneId(zid)}
+              />
+            </div>
+
+            {/* Right Column: Live Camera Feed & Robot Mobility Controls Side-by-Side */}
+            <div className="field-map-side-column">
+              <CameraView
+                cameraStatus={telemetry?.camera_status}
+                lastDetection={lastDetection}
+                isScanning={isScanning}
+                onTriggerScan={handleTriggerScan}
+                activeZoneId={telemetry?.active_zone_id ?? activeZoneId}
+                telemetry={telemetry}
+                onMove={handleMove}
+                onStop={handleStop}
+              />
+
+              <RobotControls
+                telemetry={telemetry}
+                onMove={handleMove}
+                onStop={handleStop}
+                onEmergencyStop={handleEmergencyStop}
+                onSprayApprove={handleApproveTreatment}
+              />
+            </div>
+          </div>
+        )}
+      </main>
+      </div>
+    </div>
+  );
+};

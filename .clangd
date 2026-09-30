@@ -1,0 +1,18 @@
+CompileFlags:
+  Add:
+    - "-xc++"
+    - "-std=c++17"
+    - "-DARDUINO=10800"
+    - "-DESP32=1"
+    - "-Wno-unknown-pragmas"
+    - "--include=c:/Users/swaya/OneDrive/Documents/Agriguard/firmware/include/esp32_ide_stubs.h"
+    - "-Ic:/Users/swaya/OneDrive/Documents/Agriguard/firmware/include"
+    - "-Ic:/Users/swaya/OneDrive/Documents/Agriguard/firmware/esp32/include"
+    - "-Ifirmware/include"
+    - "-Ifirmware/esp32/include"
+    - "-I../include"
+    - "-Iinclude"
+
+Diagnostics:
+  Suppress:
+    - "pp_file_not_found"

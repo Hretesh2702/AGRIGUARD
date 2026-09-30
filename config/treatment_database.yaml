@@ -1,0 +1,163 @@
+# AgriGuard — Verified Agricultural Treatment Knowledge Base
+# Controlled agronomic interventions verified by agricultural extension authorities
+# DO NOT ALTER WITHOUT CERTIFIED AGRONOMIC GUIDANCE
+
+version: "2.1.0"
+authority: "USDA-ARS Vegetable Pathology & ICAR Plant Protection Directory"
+last_audit: "2026-06-20"
+
+crops:
+  tomato:
+    scientific_name: "Solanum lycopersicum"
+    common_name: "Tomato"
+    diseases:
+      early_blight:
+        display_name: "Early Blight"
+        pathogen: "Alternaria solani (Fungal)"
+        characteristic_symptoms: "Dark brown to black necrotic lesions with concentric rings ('target' or 'bullseye' pattern) on older lower foliage, chlorotic yellow halo surrounding lesions."
+        confusable_with: "Nitrogen Deficiency (Chlorosis without concentric rings)"
+        severity_tiers:
+          mild:
+            description: "Few isolated spots (<5mm) on lowest leaves only; canopy unaffected"
+            recommended_treatment_id: "TRT_COPPER_HYDROXIDE"
+          moderate:
+            description: "Multiple concentric lesions, lower foliage yellowing and blighting; spread to mid-canopy"
+            recommended_treatment_id: "TRT_COPPER_HYDROXIDE"
+          severe:
+            description: "Canopy defoliation >35%, stem lesions, imminent fruit yield loss"
+            recommended_treatment_id: "TRT_CHLOROTHALONIL"
+        treatments:
+          - id: "TRT_COPPER_HYDROXIDE"
+            trade_name: "Copper Hydroxide 77% WP (Kocide Class)"
+            chemical_class: "Inorganic Copper Fungicide (FRAC Group M01)"
+            target_inventory_code: "TANK_COPPER_FUNGICIDE"
+            active_concentration_gl: 2.0
+            dosage_description: "2.0 grams per Liter of clean water (0.20% w/v)"
+            application_method: "Fine hydraulic cone misting targeting underside and topside of affected foliage"
+            pulse_duration_ms: 2500
+            estimated_volume_ml: 40.0
+            spray_pressure_psi: 35
+            re_entry_interval_hours: 48
+            pre_harvest_interval_days: 0
+            safety_notes: "Mandatory nitrile gloves and vapor mask. Toxic to aquatic organisms. Do not inhale spray mist."
+            environmental_restrictions:
+              max_temp_c: 32.0
+              max_humidity_pct: 88.0
+              min_soil_moisture_pct: 22.0 # Prohibited during severe drought stress
+
+          - id: "TRT_BIO_NEEM"
+            trade_name: "Cold-Pressed Organic Bio-Neem Solution (Azadirachtin 0.03%)"
+            chemical_class: "Botanical Bio-Fungicide & Antifeedant"
+            target_inventory_code: "TANK_NEEM_ORGANIC"
+            active_concentration_gl: 5.0
+            dosage_description: "5.0 mL per Liter of water with mild organic surfactant"
+            application_method: "Direct leaf wetting targeting early symptom foci"
+            pulse_duration_ms: 3000
+            estimated_volume_ml: 48.0
+            spray_pressure_psi: 30
+            re_entry_interval_hours: 4
+            pre_harvest_interval_days: 1
+            safety_notes: "Organic certified. Spray late evening to protect honeybees and pollinators."
+            environmental_restrictions:
+              max_temp_c: 30.0
+              max_humidity_pct: 92.0
+              min_soil_moisture_pct: 20.0
+
+      late_blight:
+        display_name: "Late Blight"
+        pathogen: "Phytophthora infestans (Oomycete)"
+        characteristic_symptoms: "Large, irregular water-soaked pale-green to brown lesions; white fungal-like sporulation on leaf underside in humid mornings."
+        severity_tiers:
+          mild:
+            description: "Pale water-soaked spots on leaf tips and margins"
+            recommended_treatment_id: "TRT_CYMOXANIL_MANCOZEB"
+          moderate:
+            description: "Rapidly expanding necrotic patches, white sporulation visible on underside"
+            recommended_treatment_id: "TRT_CYMOXANIL_MANCOZEB"
+          severe:
+            description: "Entire branches collapsing, blackened stems, fruit rot"
+            recommended_treatment_id: "TRT_CYMOXANIL_MANCOZEB"
+        treatments:
+          - id: "TRT_CYMOXANIL_MANCOZEB"
+            trade_name: "Cymoxanil 8% + Mancozeb 64% WP"
+            chemical_class: "Curative & Contact Multi-Site Protectant (FRAC 27 + M03)"
+            target_inventory_code: "TANK_COPPER_FUNGICIDE"
+            active_concentration_gl: 2.5
+            dosage_description: "2.5 grams per Liter of water"
+            application_method: "High-pressure fine cone nozzle delivering complete lower leaf coverage"
+            pulse_duration_ms: 3500
+            estimated_volume_ml: 55.0
+            spray_pressure_psi: 40
+            re_entry_interval_hours: 48
+            pre_harvest_interval_days: 7
+            safety_notes: "Full PPE required: rubber boots, chemical apron, respirator. Strictly do not apply near open waterways."
+            environmental_restrictions:
+              max_temp_c: 28.0
+              max_humidity_pct: 95.0
+              min_soil_moisture_pct: 20.0
+
+      bacterial_spot:
+        display_name: "Bacterial Spot"
+        pathogen: "Xanthomonas perforans / euvesicatoria (Bacterium)"
+        characteristic_symptoms: "Small (1-3mm) circular dark brown/black spots on foliage, greasy appearance on underside, chlorotic yellow halos, ragged leaf perforation."
+        severity_tiers:
+          mild:
+            description: "Scattered dark speckles (<10 per leaflet)"
+            recommended_treatment_id: "TRT_COPPER_BACTERICIDE"
+          moderate:
+            description: "Dense dark speckling, leaves yellowing, holes developing"
+            recommended_treatment_id: "TRT_COPPER_BACTERICIDE"
+          severe:
+            description: "Extensive leaf blight, defoliation, sunburn on exposed fruit"
+            recommended_treatment_id: "TRT_COPPER_BACTERICIDE"
+        treatments:
+          - id: "TRT_COPPER_BACTERICIDE"
+            trade_name: "Fixed Copper Hydroxide + Bacillus amyloliquefaciens"
+            chemical_class: "Inorganic Bactericide + Biological Shield"
+            target_inventory_code: "TANK_COPPER_FUNGICIDE"
+            active_concentration_gl: 2.0
+            dosage_description: "2.0 g/L Copper + 2.0 mL/L Bio-culture"
+            application_method: "Targeted localized canopy misting"
+            pulse_duration_ms: 2500
+            estimated_volume_ml: 40.0
+            spray_pressure_psi: 35
+            re_entry_interval_hours: 24
+            pre_harvest_interval_days: 0
+            safety_notes: "Avoid application during mid-day sunlight to prevent copper phytotoxicity."
+            environmental_restrictions:
+              max_temp_c: 32.0
+              max_humidity_pct: 85.0
+              min_soil_moisture_pct: 20.0
+
+      healthy:
+        display_name: "Healthy Foliage"
+        pathogen: "None (Optimal Agronomic Vigor)"
+        characteristic_symptoms: "Vibrant green leaves, uniform turgor pressure, absence of necrotic lesions or chlorosis."
+        severity_tiers:
+          mild: { description: "Normal", recommended_treatment_id: null }
+        treatments: []
+
+sensor_correlation_rules:
+  # Rule: Prevent treating nitrogen deficiency as a fungal blight
+  nitrogen_chlorosis:
+    condition: "detected_disease == 'early_blight' and nitrogen_mg_kg < 35 and disease_confidence < 0.75"
+    diagnostic_verdict: "SUSPECTED_NUTRIENT_STRESS"
+    explanation: "Leaf chlorosis strongly correlates with critically low soil Nitrogen (N < 35 mg/kg). Disease confidence is marginal. Foliar fungicide is CONTRAINDICATED."
+    allow_spray: false
+    recommended_action: "Apply nitrogen-balanced soil fertigation (e.g. Calcium Nitrate 15.5-0-0) or organic compost tea. Reinspect foliage in 72 hours."
+
+  # Rule: Prevent chemical burn during extreme water stress
+  drought_contraindication:
+    condition: "soil_moisture_pct < 20.0"
+    diagnostic_verdict: "DROUGHT_STRESS_ACTIVE"
+    explanation: "Soil volumetric moisture is critically low (<20%). Crop is undergoing severe dehydration stress. Applying foliar agrochemicals under drought stress causes chemical leaf scorch (phytotoxicity)."
+    allow_spray: false
+    recommended_action: "Perform irrigation cycle immediately. Delay all foliar chemical applications until soil moisture stabilizes above 35%."
+
+  # Rule: High humidity sporulation warning
+  high_sporulation_risk:
+    condition: "humidity_pct > 85.0 and temp_c >= 18.0 and temp_c <= 28.0"
+    diagnostic_verdict: "MICROCLIMATE_FAVORS_SPREAD"
+    explanation: "Current ambient temperature (18-28°C) and relative humidity (>85%) represent prime conditions for rapid Alternaria and Phytophthora spore germination."
+    allow_spray: true
+    recommended_action: "Prioritize prompt targeted barrier spray upon farmer approval."

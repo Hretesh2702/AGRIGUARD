@@ -1,0 +1,52 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C / C++ compiled objects
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node & Frontend dependencies
+frontend/node_modules/
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.timestamp-*.mjs
+
+# Hardware & PlatformIO build artifacts
+.pio/
+*/.pio/
+.pioenvs/
+.piolibdeps/
+
+# Database temp/lock files
+*.sqlite3-journal
+*.db-journal
+*.db-wal
+*.db-shm
+*.log
+
+# Operating System & IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
