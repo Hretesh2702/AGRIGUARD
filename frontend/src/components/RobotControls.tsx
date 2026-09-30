@@ -103,7 +103,7 @@ export const RobotControls: React.FC<RobotControlsProps> = ({
       else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') dir = 'backward';
       else if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') dir = 'left';
       else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') dir = 'right';
-      else if (e.key === ' ' || e.key === 'Escape' || e.key === 'x' || e.key === 'X') {
+      else if (e.key === ' ' || e.code === 'Space') {
         e.preventDefault();
         executeStop();
         return;
@@ -417,7 +417,7 @@ export const RobotControls: React.FC<RobotControlsProps> = ({
               transition: 'all 0.15s ease',
               boxShadow: '0 0 15px rgba(239, 68, 68, 0.4)'
             }}
-            title="Instant Stop (Click or Spacebar / Escape / X)"
+            title="Instant Stop (Click or Spacebar)"
           >
             <Square size={26} color="#fff" />
             <span style={{ fontSize: '0.75rem', fontWeight: 900, marginTop: '2px', letterSpacing: '0.05em' }}>STOP</span>
@@ -498,7 +498,7 @@ export const RobotControls: React.FC<RobotControlsProps> = ({
 
         {/* Laptop keyboard hint */}
         <div style={{ marginTop: '0.85rem', fontSize: '0.68rem', color: 'var(--text-dim)', textAlign: 'center' }}>
-          Keyboard controls: <span className="mono">W / A / S / D</span> or <span className="mono">Arrow Keys</span> &bull; <span className="mono">Space / Esc</span> for STOP
+          Keyboard controls: <span className="mono">W / A / S / D</span> or <span className="mono">Arrow Keys</span> &bull; <span className="mono">Space</span> for STOP
         </div>
       </div>
 
