@@ -297,6 +297,21 @@ public:
     JsonObject createNestedObject(const String& key);
     JsonArray createNestedArray(const char* key = "");
     JsonArray createNestedArray(const String& key);
+
+    // Fallback default value operator (e.g. doc["speed"] | 120)
+    template <typename T>
+    T operator|(T fallback) const { return fallback; }
+    const char* operator|(const char* fallback) const { return fallback ? fallback : ""; }
+
+    // Implicit type conversions
+    operator int() const { return 0; }
+    operator long() const { return 0; }
+    operator unsigned long() const { return 0; }
+    operator float() const { return 0.0f; }
+    operator double() const { return 0.0; }
+    operator bool() const { return false; }
+    operator const char*() const { return ""; }
+    operator String() const { return String(""); }
 };
 
 class JsonArray {

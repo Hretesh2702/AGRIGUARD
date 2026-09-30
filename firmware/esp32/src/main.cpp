@@ -250,7 +250,7 @@ void handleCommand() {
         return;
     }
 
-    // 3. Movement Commands
+    // 3. Movement Commands (with default fallback values)
     if (type == "move") {
         String dir = doc["direction"] | "stop";
         int speed = doc["speed"] | 120;
