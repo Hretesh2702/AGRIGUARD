@@ -86,9 +86,6 @@ export const App: React.FC = () => {
             onEmergencyStop={handleEmergencyStop}
           />
 
-          {/* Robot Connectivity Panel */}
-          <ConnectPanel telemetry={telemetry} />
-
           {/* Sidebar Hero Section */}
           <SidebarHero />
         </aside>
@@ -111,6 +108,9 @@ export const App: React.FC = () => {
                 {scanNotification}
               </div>
             )}
+
+            {/* Hardware Robot Connectivity (Wi-Fi & Bluetooth) */}
+            <ConnectPanel telemetry={telemetry} />
 
             {/* Dashboard Primary Section: Robot Sensor Status Only */}
             <section style={{ width: '100%' }}>

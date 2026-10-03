@@ -8,9 +8,9 @@ import {
   CheckCircle2,
   XCircle,
   Loader2,
-  ChevronDown,
-  ChevronRight,
-  Signal
+  Signal,
+  Radio,
+  Cpu
 } from 'lucide-react';
 import {
   connectRobotWiFi,
@@ -32,12 +32,11 @@ type ActiveTab = 'wifi' | 'bluetooth';
 const STATUS_COLOR: Record<ConnectionStatus, string> = {
   idle: 'var(--text-dim)',
   connecting: 'var(--sky-400)',
-  connected: 'var(--emerald-500)',
-  failed: 'var(--rose-500)'
+  connected: 'var(--emerald-400)',
+  failed: 'var(--rose-400)'
 };
 
 export const ConnectPanel: React.FC<ConnectPanelProps> = ({ telemetry, onConnectionChange }) => {
-  const [expanded, setExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<ActiveTab>('wifi');
 
   // Wi-Fi state
@@ -53,31 +52,40 @@ export const ConnectPanel: React.FC<ConnectPanelProps> = ({ telemetry, onConnect
   const [btSelectedAddr, setBtSelectedAddr] = useState('');
   const [scanning, setScanning] = useState(false);
 
-  const esp32Connected = telemetry?.esp32_connected ?? false;
-  const hwMode = telemetry?.hardware_mode ?? 'SIMULATION';
+  const esp32Connected = Boolean(telemetry?.esp32_connected);
+  const isSimulation = (
+    telemetry?.mode === 'SIMULATION' ||
+    telemetry?.hardware_mode === 'SIMULATION' ||
+    telemetry?.data_source === 'SIMULATION' ||
+    !esp32Connected
+  );
 
   // ── Wi-Fi connect ────────────────────────────────────────────────────────────
 
   const handleWifiConnect = useCallback(async () => {
     const ip = wifiIp.trim();
     const port = parseInt(wifiPort) || 80;
-    if (!ip) { setWifiMsg('Enter a valid IP address.'); setWifiStatus('failed'); return; }
+    if (!ip) {
+      setWifiMsg('Enter a valid IP address.');
+      setWifiStatus('failed');
+      return;
+    }
 
     setWifiStatus('connecting');
-    setWifiMsg(`Probing ${ip}:${port}…`);
+    setWifiMsg(`Probing ESP32 at ${ip}:${port}…`);
     try {
       const res = await connectRobotWiFi(ip, port);
       if (res.ok) {
         setWifiStatus('connected');
-        setWifiMsg(`✓ Connected — ${res.ping_ms != null ? `${res.ping_ms}ms` : 'OK'}`);
+        setWifiMsg(`Connected to ESP32 (${res.ping_ms != null ? `${res.ping_ms}ms ping` : 'OK'}) — Hardware Telemetry Live!`);
       } else {
         setWifiStatus('failed');
-        setWifiMsg(res.message || 'ESP32 did not respond.');
+        setWifiMsg(res.message || 'ESP32 did not respond over Wi-Fi.');
       }
       onConnectionChange?.();
     } catch (e: any) {
       setWifiStatus('failed');
-      setWifiMsg(e.message || 'Connection error');
+      setWifiMsg(e.message || 'Connection error to ESP32');
     }
   }, [wifiIp, wifiPort, onConnectionChange]);
 
@@ -87,7 +95,7 @@ export const ConnectPanel: React.FC<ConnectPanelProps> = ({ telemetry, onConnect
     try {
       await disconnectRobot();
       setWifiStatus('idle');
-      setWifiMsg('Switched to simulation mode.');
+      setWifiMsg('Disconnected. Switched back to simulation telemetry mode.');
       setBtStatus('idle');
       setBtMsg('');
       onConnectionChange?.();
@@ -107,18 +115,20 @@ export const ConnectPanel: React.FC<ConnectPanelProps> = ({ telemetry, onConnect
       const res = await scanBluetoothDevices();
       setBtDevices(res.devices);
       if (res.found) {
-        setBtMsg(`Found ${res.agriguard_devices.length} AgriGuard device(s). Select one to connect.`);
+        setBtMsg(`Found ${res.agriguard_devices.length} AgriGuard robot(s). Select device to connect.`);
         setBtStatus('idle');
-        // Pre-select first AgriGuard device
         if (res.agriguard_devices.length > 0 && !btSelectedAddr) {
           setBtSelectedAddr(res.agriguard_devices[0].address);
         }
       } else {
-        setBtMsg(`No AgriGuard devices found. ${res.devices.length} total BLE device(s) visible.`);
+        setBtMsg(`Scan finished. ${res.devices.length} device(s) visible. Select yours or retry.`);
         setBtStatus('idle');
+        if (res.devices.length > 0 && !btSelectedAddr) {
+          setBtSelectedAddr(res.devices[0].address);
+        }
       }
     } catch (e: any) {
-      setBtMsg(e.message || 'Scan failed — is Bluetooth enabled?');
+      setBtMsg(e.message || 'Scan failed — verify Bluetooth is enabled on this computer.');
       setBtStatus('failed');
     } finally {
       setScanning(false);
@@ -128,411 +138,499 @@ export const ConnectPanel: React.FC<ConnectPanelProps> = ({ telemetry, onConnect
   // ── BLE connect ─────────────────────────────────────────────────────────────
 
   const handleBtConnect = useCallback(async () => {
-    if (!btSelectedAddr) { setBtMsg('Select a device first.'); return; }
+    if (!btSelectedAddr) {
+      setBtMsg('Select a Bluetooth device first.');
+      return;
+    }
     setBtStatus('connecting');
-    setBtMsg(`Connecting to ${btSelectedAddr}…`);
+    setBtMsg(`Pairing with ${btSelectedAddr}…`);
     try {
       const res = await connectRobotBluetooth(btSelectedAddr);
       if (res.ok) {
         setBtStatus('connected');
-        setBtMsg(`✓ BLE Connected${res.ping_ms != null ? ` — ${res.ping_ms}ms` : ''}`);
+        setBtMsg(`BLE Connected${res.ping_ms != null ? ` (${res.ping_ms}ms latency)` : ''} — Hardware Telemetry Live!`);
       } else {
         setBtStatus('failed');
-        setBtMsg(res.message || 'BLE pairing failed.');
+        setBtMsg(res.message || 'BLE pairing failed. Make sure ESP32 is powered and in range.');
       }
       onConnectionChange?.();
     } catch (e: any) {
       setBtStatus('failed');
-      setBtMsg(e.message || 'BLE error');
+      setBtMsg(e.message || 'BLE connection error');
     }
   }, [btSelectedAddr, onConnectionChange]);
-
-  // ── Render ───────────────────────────────────────────────────────────────────
 
   const isConnected = esp32Connected || wifiStatus === 'connected' || btStatus === 'connected';
 
   return (
-    <div
-      className="glass-panel"
-      style={{
-        borderRadius: '14px',
-        border: '1px solid var(--border-subtle)',
-        overflow: 'hidden'
-      }}
-    >
-      {/* Header — always visible */}
-      <button
-        onClick={() => setExpanded(v => !v)}
-        style={{
-          width: '100%',
-          background: 'transparent',
-          border: 'none',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0.65rem 0.9rem',
-          color: '#fff'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
-          <PlugZap size={15} color={isConnected ? 'var(--emerald-500)' : 'var(--text-dim)'} />
-          <span style={{ fontWeight: 700, fontSize: '0.78rem' }}>Robot Connectivity</span>
-          <span
-            className={`status-pill ${isConnected ? 'status-online' : 'status-warning'}`}
-            style={{ fontSize: '0.6rem', padding: '0.1rem 0.4rem', fontWeight: 700 }}
-          >
-            {isConnected ? '● LIVE' : hwMode === 'SIMULATION' ? '● SIM' : '● OFFLINE'}
-          </span>
-        </div>
-        {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-      </button>
-
-      {/* Collapsible body */}
-      {expanded && (
-        <div style={{ padding: '0 0.9rem 0.9rem' }}>
-
-          {/* Tab switcher */}
-          <div style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.75rem' }}>
-            {(['wifi', 'bluetooth'] as ActiveTab[]).map(tab => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                style={{
-                  flex: 1,
-                  padding: '0.38rem 0',
-                  borderRadius: '8px',
-                  border: activeTab === tab
-                    ? '1px solid rgba(16,185,129,0.45)'
-                    : '1px solid var(--border-subtle)',
-                  background: activeTab === tab ? 'var(--emerald-500)' : 'rgba(255,255,255,0.04)',
-                  color: activeTab === tab ? '#05080f' : 'var(--text-main)',
-                  fontWeight: 700,
-                  fontSize: '0.72rem',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '0.35rem'
-                }}
-              >
-                {tab === 'wifi' ? <Wifi size={12} /> : <Bluetooth size={12} />}
-                {tab === 'wifi' ? 'Wi-Fi' : 'Bluetooth'}
-              </button>
-            ))}
+    <div className="glass-panel" style={{ padding: '1.25rem', width: '100%', boxSizing: 'border-box' }}>
+      
+      {/* ── Top Header Row ───────────────────────────────────────────────────── */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '1rem',
+        flexWrap: 'wrap',
+        gap: '0.75rem'
+      }}>
+        {/* Title & Icon */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+          <div style={{
+            width: '38px',
+            height: '38px',
+            borderRadius: '10px',
+            background: isConnected ? 'rgba(16, 185, 129, 0.15)' : 'rgba(56, 189, 248, 0.15)',
+            border: `1px solid ${isConnected ? 'rgba(16, 185, 129, 0.35)' : 'rgba(56, 189, 248, 0.35)'}`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <PlugZap size={20} color={isConnected ? 'var(--emerald-400)' : 'var(--sky-400)'} />
           </div>
+          <div>
+            <h2 style={{ fontSize: '1.05rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              Robot Hardware Connectivity
+            </h2>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0.15rem 0 0 0' }}>
+              Connect real ESP32 robot via Wi-Fi (Primary) or Bluetooth BLE (Offline fallback)
+            </p>
+          </div>
+        </div>
 
-          {/* ── Wi-Fi Tab ── */}
-          {activeTab === 'wifi' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
-              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
-                Connect to ESP32 Access Point (192.168.4.1) or your field router IP.
-              </div>
+        {/* Right Badges & Disconnect */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+          <span style={{
+            fontSize: '0.75rem',
+            padding: '0.3rem 0.75rem',
+            borderRadius: '12px',
+            fontWeight: 700,
+            background: isConnected ? 'rgba(16, 185, 129, 0.15)' : 'rgba(234, 179, 8, 0.15)',
+            border: `1px solid ${isConnected ? 'rgba(16, 185, 129, 0.4)' : 'rgba(234, 179, 8, 0.4)'}`,
+            color: isConnected ? '#10b981' : '#eab308',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.4rem'
+          }}>
+            <span style={{
+              width: '7px',
+              height: '7px',
+              borderRadius: '50%',
+              background: isConnected ? '#10b981' : '#eab308',
+              boxShadow: isConnected ? '0 0 8px #10b981' : 'none'
+            }} />
+            {isConnected ? 'REAL HARDWARE CONNECTED' : 'SIMULATION MODE'}
+          </span>
 
-              {/* IP field */}
-              <div>
-                <label style={{ fontSize: '0.65rem', color: 'var(--text-dim)', fontWeight: 600, display: 'block', marginBottom: '0.2rem' }}>
-                  ESP32 IP Address
-                </label>
-                <input
-                  type="text"
-                  value={wifiIp}
-                  onChange={e => setWifiIp(e.target.value)}
-                  placeholder="192.168.4.1"
-                  onKeyDown={e => e.key === 'Enter' && handleWifiConnect()}
-                  style={{
-                    width: '100%',
-                    background: 'rgba(255,255,255,0.06)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: '7px',
-                    color: '#fff',
-                    padding: '0.4rem 0.6rem',
-                    fontSize: '0.78rem',
-                    fontFamily: 'monospace',
-                    outline: 'none',
-                    boxSizing: 'border-box'
-                  }}
-                />
-              </div>
-
-              {/* Port field */}
-              <div>
-                <label style={{ fontSize: '0.65rem', color: 'var(--text-dim)', fontWeight: 600, display: 'block', marginBottom: '0.2rem' }}>
-                  Port (default 80)
-                </label>
-                <input
-                  type="number"
-                  value={wifiPort}
-                  onChange={e => setWifiPort(e.target.value)}
-                  min={1}
-                  max={65535}
-                  onKeyDown={e => e.key === 'Enter' && handleWifiConnect()}
-                  style={{
-                    width: '100%',
-                    background: 'rgba(255,255,255,0.06)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: '7px',
-                    color: '#fff',
-                    padding: '0.4rem 0.6rem',
-                    fontSize: '0.78rem',
-                    fontFamily: 'monospace',
-                    outline: 'none',
-                    boxSizing: 'border-box'
-                  }}
-                />
-              </div>
-
-              {/* Status message */}
-              {wifiMsg && (
-                <div style={{
-                  fontSize: '0.68rem',
-                  color: STATUS_COLOR[wifiStatus],
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.35rem'
-                }}>
-                  {wifiStatus === 'connecting' && <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} />}
-                  {wifiStatus === 'connected' && <CheckCircle2 size={11} />}
-                  {wifiStatus === 'failed' && <XCircle size={11} />}
-                  <span>{wifiMsg}</span>
-                </div>
-              )}
-
-              {/* Action buttons */}
-              <div style={{ display: 'flex', gap: '0.4rem' }}>
-                <button
-                  onClick={handleWifiConnect}
-                  disabled={wifiStatus === 'connecting'}
-                  className="btn btn-primary"
-                  style={{
-                    flex: 1,
-                    padding: '0.42rem 0',
-                    fontSize: '0.72rem',
-                    fontWeight: 700,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '0.35rem',
-                    opacity: wifiStatus === 'connecting' ? 0.7 : 1
-                  }}
-                >
-                  {wifiStatus === 'connecting'
-                    ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> Probing…</>
-                    : <><Wifi size={12} /> Connect</>}
-                </button>
-
-                {(esp32Connected || wifiStatus === 'connected') && (
-                  <button
-                    onClick={handleDisconnect}
-                    className="btn btn-outline"
-                    style={{
-                      padding: '0.42rem 0.65rem',
-                      fontSize: '0.72rem',
-                      fontWeight: 700,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.3rem',
-                      color: 'var(--rose-400)',
-                      borderColor: 'rgba(244,63,94,0.4)'
-                    }}
-                  >
-                    <Unplug size={12} /> Disconnect
-                  </button>
-                )}
-              </div>
-
-              {/* Quick preset buttons */}
-              <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '0.62rem', color: 'var(--text-dim)', alignSelf: 'center' }}>Presets:</span>
-                {[
-                  { label: 'SoftAP', ip: '192.168.4.1', port: 80 },
-                  { label: 'Hotspot', ip: '192.168.1.100', port: 80 },
-                ].map(p => (
-                  <button
-                    key={p.label}
-                    onClick={() => { setWifiIp(p.ip); setWifiPort(String(p.port)); }}
-                    style={{
-                      padding: '0.2rem 0.5rem',
-                      borderRadius: '6px',
-                      background: 'rgba(255,255,255,0.06)',
-                      border: '1px solid var(--border-subtle)',
-                      color: 'var(--text-muted)',
-                      fontSize: '0.62rem',
-                      cursor: 'pointer',
-                      fontWeight: 600
-                    }}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+          {isConnected && (
+            <button
+              onClick={handleDisconnect}
+              className="btn btn-outline"
+              style={{
+                padding: '0.32rem 0.75rem',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                color: 'var(--rose-400)',
+                borderColor: 'rgba(244, 63, 94, 0.4)'
+              }}
+            >
+              <Unplug size={13} />
+              Disconnect
+            </button>
           )}
+        </div>
+      </div>
 
-          {/* ── Bluetooth Tab ── */}
-          {activeTab === 'bluetooth' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
-              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
-                Scan for AgriGuard BLE devices. Bluetooth must be enabled on this laptop.
-              </div>
+      {/* ── Mode Tabs (Wi-Fi vs Bluetooth) ──────────────────────────────────── */}
+      <div style={{
+        display: 'flex',
+        gap: '0.5rem',
+        marginBottom: '1rem',
+        background: 'rgba(0, 0, 0, 0.25)',
+        padding: '0.3rem',
+        borderRadius: '10px',
+        border: '1px solid var(--border-subtle)',
+        maxWidth: '380px'
+      }}>
+        <button
+          onClick={() => setActiveTab('wifi')}
+          style={{
+            flex: 1,
+            padding: '0.45rem 0.75rem',
+            borderRadius: '7px',
+            border: 'none',
+            background: activeTab === 'wifi' ? 'var(--emerald-500)' : 'transparent',
+            color: activeTab === 'wifi' ? '#05080f' : 'var(--text-muted)',
+            fontWeight: 700,
+            fontSize: '0.78rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.45rem',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <Wifi size={14} />
+          Wi-Fi (Primary)
+        </button>
 
-              {/* Scan button */}
-              <button
-                onClick={handleBtScan}
-                disabled={scanning}
-                className="btn btn-outline"
+        <button
+          onClick={() => setActiveTab('bluetooth')}
+          style={{
+            flex: 1,
+            padding: '0.45rem 0.75rem',
+            borderRadius: '7px',
+            border: 'none',
+            background: activeTab === 'bluetooth' ? 'var(--emerald-500)' : 'transparent',
+            color: activeTab === 'bluetooth' ? '#05080f' : 'var(--text-muted)',
+            fontWeight: 700,
+            fontSize: '0.78rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.45rem',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <Bluetooth size={14} />
+          Bluetooth BLE (Fallback)
+        </button>
+      </div>
+
+      {/* ── Wi-Fi Configuration Section ─────────────────────────────────────── */}
+      {activeTab === 'wifi' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          
+          {/* Controls Bar: IP + Port + Connect Button */}
+          <div style={{
+            display: 'flex',
+            gap: '0.75rem',
+            alignItems: 'flex-end',
+            flexWrap: 'wrap'
+          }}>
+            {/* IP Input */}
+            <div style={{ flex: '2 1 200px' }}>
+              <label style={{
+                fontSize: '0.72rem',
+                color: 'var(--text-dim)',
+                fontWeight: 600,
+                display: 'block',
+                marginBottom: '0.3rem'
+              }}>
+                ESP32 IP Address
+              </label>
+              <input
+                type="text"
+                value={wifiIp}
+                onChange={e => setWifiIp(e.target.value)}
+                placeholder="192.168.4.1"
+                onKeyDown={e => e.key === 'Enter' && handleWifiConnect()}
                 style={{
                   width: '100%',
-                  padding: '0.42rem',
-                  fontSize: '0.72rem',
-                  fontWeight: 700,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '0.4rem',
-                  opacity: scanning ? 0.7 : 1
-                }}
-              >
-                {scanning
-                  ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> Scanning…</>
-                  : <><Search size={12} /> Scan for Devices</>}
-              </button>
-
-              {/* Status message */}
-              {btMsg && (
-                <div style={{
-                  fontSize: '0.68rem',
-                  color: STATUS_COLOR[btStatus],
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.35rem'
-                }}>
-                  {btStatus === 'connecting' && <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} />}
-                  {btStatus === 'connected' && <CheckCircle2 size={11} />}
-                  {btStatus === 'failed' && <XCircle size={11} />}
-                  <span>{btMsg}</span>
-                </div>
-              )}
-
-              {/* Device list */}
-              {btDevices.length > 0 && (
-                <div style={{
-                  background: 'rgba(0,0,0,0.25)',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid rgba(255, 255, 255, 0.12)',
                   borderRadius: '8px',
-                  border: '1px solid var(--border-subtle)',
-                  overflow: 'hidden',
-                  maxHeight: '160px',
-                  overflowY: 'auto'
-                }}>
-                  {btDevices.map(dev => (
-                    <button
-                      key={dev.address}
-                      onClick={() => setBtSelectedAddr(dev.address)}
-                      style={{
-                        width: '100%',
-                        background: btSelectedAddr === dev.address
-                          ? 'rgba(16,185,129,0.12)'
-                          : 'transparent',
-                        border: 'none',
-                        borderBottom: '1px solid rgba(255,255,255,0.05)',
-                        padding: '0.45rem 0.65rem',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                        textAlign: 'left'
-                      }}
-                    >
-                      <Bluetooth
-                        size={11}
-                        color={dev.is_agriguard ? 'var(--emerald-500)' : 'var(--text-dim)'}
-                      />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{
-                          fontSize: '0.70rem',
-                          fontWeight: dev.is_agriguard ? 700 : 500,
-                          color: dev.is_agriguard ? 'var(--emerald-400)' : 'var(--text-main)',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis'
-                        }}>
-                          {dev.name || 'Unknown Device'}
-                          {dev.is_agriguard && (
-                            <span style={{ marginLeft: '0.35rem', fontSize: '0.58rem', color: 'var(--emerald-500)', fontWeight: 700 }}>
-                              ✓ AGRIGUARD
-                            </span>
-                          )}
-                        </div>
-                        <div style={{ fontSize: '0.60rem', color: 'var(--text-dim)', fontFamily: 'monospace' }}>
-                          {dev.address}
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: 'var(--text-dim)', fontSize: '0.60rem' }}>
-                        <Signal size={9} />
-                        <span>{dev.rssi}</span>
-                      </div>
-                      {btSelectedAddr === dev.address && (
-                        <CheckCircle2 size={12} color="var(--emerald-500)" />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
+                  color: '#fff',
+                  padding: '0.55rem 0.75rem',
+                  fontSize: '0.85rem',
+                  fontFamily: 'monospace',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
 
-              {/* Connect button */}
-              {btSelectedAddr && (
+            {/* Port Input */}
+            <div style={{ flex: '1 1 100px', maxWidth: '140px' }}>
+              <label style={{
+                fontSize: '0.72rem',
+                color: 'var(--text-dim)',
+                fontWeight: 600,
+                display: 'block',
+                marginBottom: '0.3rem'
+              }}>
+                Port
+              </label>
+              <input
+                type="number"
+                value={wifiPort}
+                onChange={e => setWifiPort(e.target.value)}
+                min={1}
+                max={65535}
+                onKeyDown={e => e.key === 'Enter' && handleWifiConnect()}
+                style={{
+                  width: '100%',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid rgba(255, 255, 255, 0.12)',
+                  borderRadius: '8px',
+                  color: '#fff',
+                  padding: '0.55rem 0.75rem',
+                  fontSize: '0.85rem',
+                  fontFamily: 'monospace',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+
+            {/* Connect Action Button */}
+            <button
+              onClick={handleWifiConnect}
+              disabled={wifiStatus === 'connecting'}
+              className="btn btn-primary"
+              style={{
+                flex: '1 1 140px',
+                height: '38px',
+                padding: '0 1.25rem',
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.45rem',
+                opacity: wifiStatus === 'connecting' ? 0.75 : 1,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              {wifiStatus === 'connecting' ? (
+                <>
+                  <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                  Probing ESP32…
+                </>
+              ) : (
+                <>
+                  <Wifi size={14} />
+                  Connect Wi-Fi
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Quick Presets & Guidance */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '0.5rem',
+            paddingTop: '0.25rem'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', fontWeight: 600 }}>Presets:</span>
+              {[
+                { label: 'SoftAP Default (192.168.4.1)', ip: '192.168.4.1', port: 80 },
+                { label: 'Field Hotspot (192.168.1.100)', ip: '192.168.1.100', port: 80 },
+                { label: 'Office/LAN (192.168.0.150)', ip: '192.168.0.150', port: 80 }
+              ].map(p => (
                 <button
-                  onClick={handleBtConnect}
-                  disabled={btStatus === 'connecting'}
-                  className="btn btn-primary"
+                  key={p.label}
+                  onClick={() => { setWifiIp(p.ip); setWifiPort(String(p.port)); }}
                   style={{
-                    width: '100%',
-                    padding: '0.42rem',
-                    fontSize: '0.72rem',
-                    fontWeight: 700,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '0.4rem',
-                    opacity: btStatus === 'connecting' ? 0.7 : 1
+                    padding: '0.22rem 0.6rem',
+                    borderRadius: '6px',
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    color: 'var(--text-muted)',
+                    fontSize: '0.7rem',
+                    cursor: 'pointer',
+                    fontWeight: 600
                   }}
                 >
-                  {btStatus === 'connecting'
-                    ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> Pairing…</>
-                    : <><Bluetooth size={12} /> Pair &amp; Connect</>}
+                  {p.label}
                 </button>
-              )}
+              ))}
+            </div>
 
-              {/* Disconnect */}
-              {btStatus === 'connected' && (
-                <button
-                  onClick={handleDisconnect}
-                  className="btn btn-outline"
-                  style={{
-                    width: '100%',
-                    padding: '0.42rem',
-                    fontSize: '0.72rem',
-                    fontWeight: 700,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '0.4rem',
-                    color: 'var(--rose-400)',
-                    borderColor: 'rgba(244,63,94,0.4)'
-                  }}
-                >
-                  <Unplug size={12} /> Disconnect BLE
-                </button>
-              )}
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>
+              SoftAP SSID: <strong style={{ color: '#fff' }}>AgriGuard-Robot</strong> | Pass: <strong style={{ color: '#fff' }}>agri12345password</strong>
+            </span>
+          </div>
+
+          {/* Live Feedback Banner */}
+          {wifiMsg && (
+            <div style={{
+              padding: '0.5rem 0.8rem',
+              borderRadius: '8px',
+              background: wifiStatus === 'connected' ? 'rgba(16, 185, 129, 0.12)' : wifiStatus === 'failed' ? 'rgba(244, 63, 94, 0.12)' : 'rgba(56, 189, 248, 0.12)',
+              border: `1px solid ${STATUS_COLOR[wifiStatus]}`,
+              color: STATUS_COLOR[wifiStatus],
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem'
+            }}>
+              {wifiStatus === 'connecting' && <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />}
+              {wifiStatus === 'connected' && <CheckCircle2 size={13} />}
+              {wifiStatus === 'failed' && <XCircle size={13} />}
+              <span>{wifiMsg}</span>
             </div>
           )}
         </div>
       )}
 
-      {/* Keyframe for spinner */}
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-      `}</style>
+      {/* ── Bluetooth BLE Configuration Section ─────────────────────────────── */}
+      {activeTab === 'bluetooth' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          
+          <div style={{
+            display: 'flex',
+            gap: '0.75rem',
+            alignItems: 'center',
+            flexWrap: 'wrap'
+          }}>
+            {/* Scan Button */}
+            <button
+              onClick={handleBtScan}
+              disabled={scanning}
+              className="btn btn-outline"
+              style={{
+                height: '38px',
+                padding: '0 1.25rem',
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.45rem',
+                opacity: scanning ? 0.75 : 1,
+                cursor: 'pointer'
+              }}
+            >
+              {scanning ? (
+                <>
+                  <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                  Scanning (~8s)…
+                </>
+              ) : (
+                <>
+                  <Search size={14} />
+                  Scan for Devices
+                </>
+              )}
+            </button>
+
+            {/* Device Dropdown or Picker */}
+            {btDevices.length > 0 && (
+              <div style={{ flex: '1 1 240px', minWidth: '200px' }}>
+                <select
+                  value={btSelectedAddr}
+                  onChange={e => setBtSelectedAddr(e.target.value)}
+                  style={{
+                    width: '100%',
+                    height: '38px',
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                    borderRadius: '8px',
+                    color: '#fff',
+                    padding: '0 0.75rem',
+                    fontSize: '0.8rem',
+                    fontFamily: 'monospace',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="" style={{ background: '#0f172a' }}>Select discovered device…</option>
+                  {btDevices.map(d => (
+                    <option key={d.address} value={d.address} style={{ background: '#0f172a' }}>
+                      {d.is_agriguard ? '⭐ ' : ''}{d.name} ({d.address}) — RSSI: {d.rssi}dBm
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Pair & Connect Button */}
+            <button
+              onClick={handleBtConnect}
+              disabled={!btSelectedAddr || btStatus === 'connecting'}
+              className="btn btn-primary"
+              style={{
+                height: '38px',
+                padding: '0 1.25rem',
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.45rem',
+                opacity: (!btSelectedAddr || btStatus === 'connecting') ? 0.6 : 1,
+                cursor: btSelectedAddr ? 'pointer' : 'not-allowed'
+              }}
+            >
+              {btStatus === 'connecting' ? (
+                <>
+                  <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                  Pairing…
+                </>
+              ) : (
+                <>
+                  <Bluetooth size={14} />
+                  Pair & Connect BLE
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Feedback message */}
+          {btMsg && (
+            <div style={{
+              padding: '0.5rem 0.8rem',
+              borderRadius: '8px',
+              background: btStatus === 'connected' ? 'rgba(16, 185, 129, 0.12)' : btStatus === 'failed' ? 'rgba(244, 63, 94, 0.12)' : 'rgba(56, 189, 248, 0.12)',
+              border: `1px solid ${STATUS_COLOR[btStatus]}`,
+              color: STATUS_COLOR[btStatus],
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem'
+            }}>
+              {btStatus === 'connecting' && <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />}
+              {btStatus === 'connected' && <CheckCircle2 size={13} />}
+              {btStatus === 'failed' && <XCircle size={13} />}
+              <span>{btMsg}</span>
+            </div>
+          )}
+
+          {/* Discovered devices pills if any */}
+          {btDevices.length > 0 && (
+            <div style={{
+              display: 'flex',
+              gap: '0.45rem',
+              flexWrap: 'wrap',
+              marginTop: '0.2rem'
+            }}>
+              {btDevices.map(d => (
+                <button
+                  key={d.address}
+                  onClick={() => setBtSelectedAddr(d.address)}
+                  style={{
+                    padding: '0.3rem 0.65rem',
+                    borderRadius: '7px',
+                    background: btSelectedAddr === d.address ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.04)',
+                    border: btSelectedAddr === d.address ? '1px solid #10b981' : '1px solid rgba(255, 255, 255, 0.08)',
+                    color: btSelectedAddr === d.address ? '#10b981' : 'var(--text-muted)',
+                    fontSize: '0.72rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem'
+                  }}
+                >
+                  <Bluetooth size={11} color={d.is_agriguard ? '#10b981' : undefined} />
+                  <strong>{d.name}</strong>
+                  <span style={{ fontSize: '0.65rem', color: 'var(--text-dim)' }}>({d.rssi} dBm)</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
     </div>
   );
 };
