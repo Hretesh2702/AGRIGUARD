@@ -9,6 +9,7 @@ import { RobotControls } from './components/RobotControls';
 import { FieldHeatmap } from './components/FieldHeatmap';
 import { DiagnosticsPage } from './pages/DiagnosticsPage';
 import { SidebarHero } from './components/SidebarHero';
+import { ConnectPanel } from './components/ConnectPanel';
 import { AIDetection, TreatmentDecision } from './types';
 import {
   runCropScan,
@@ -85,6 +86,9 @@ export const App: React.FC = () => {
             onEmergencyStop={handleEmergencyStop}
           />
 
+          {/* Robot Connectivity Panel */}
+          <ConnectPanel telemetry={telemetry} />
+
           {/* Sidebar Hero Section */}
           <SidebarHero />
         </aside>
@@ -108,38 +112,7 @@ export const App: React.FC = () => {
               </div>
             )}
 
-            {/* HERO SECTION — SIDE MANNER COCKPIT */}
-            <section className="hero-cockpit-layout">
-              {/* Hero Primary Visual: Live Real-Time Camera Feed */}
-              <div className="hero-primary-column">
-                <CameraView
-                  cameraStatus={telemetry?.camera_status}
-                  lastDetection={lastDetection}
-                  isScanning={isScanning}
-                  onTriggerScan={handleTriggerScan}
-                  activeZoneId={telemetry?.active_zone_id ?? activeZoneId}
-                  telemetry={telemetry}
-                  onMove={handleMove}
-                  onStop={handleStop}
-                />
-              </div>
-
-              {/* Hero Side Section: Intelligence, Diagnosis & Prescription Gate */}
-              <div className="hero-side-column">
-                <DiagnosisCard
-                  detection={lastDetection}
-                  telemetry={telemetry}
-                />
-
-                <TreatmentCard
-                  decision={lastDecision}
-                  telemetry={telemetry}
-                  onApprove={handleApproveTreatment}
-                />
-              </div>
-            </section>
-
-            {/* SECONDARY SECTION: Real Sensor Field Telemetry */}
+            {/* Dashboard Primary Section: Robot Sensor Status Only */}
             <section style={{ width: '100%' }}>
               <TelemetryCard telemetry={telemetry} />
             </section>

@@ -78,6 +78,9 @@ const char* STA_PASS = ""; // Set to field router password
 
 // Safety Watchdog & Obstacle Stopping
 const unsigned long WATCHDOG_TIMEOUT_MS = 1500;
+#ifdef MIN_OBSTACLE_STOP_CM
+#undef MIN_OBSTACLE_STOP_CM
+#endif
 const float MIN_OBSTACLE_STOP_CM = 25.0f;
 unsigned long lastCommandTime = 0;
 bool isEStopActive = false;

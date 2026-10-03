@@ -230,3 +230,74 @@ export async function sendRobotCommand(command: string, speed: number = 120, dur
   return res.json();
 }
 
+// ── Hardware Connectivity ──────────────────────────────────────────────────────
+
+export async function connectRobotWiFi(ip: string, port: number = 80): Promise<{
+  ok: boolean;
+  mode: string;
+  transport: string;
+  esp32_ip: string;
+  esp32_port: number;
+  is_connected: boolean;
+  ping_ms: number | null;
+  message: string;
+}> {
+  const res = await fetch(`${API_BASE}/api/robot/connect`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ip, port })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: 'Connection request failed' }));
+    throw new Error(err.message || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function disconnectRobot(): Promise<{ ok: boolean; mode: string; message: string }> {
+  const res = await fetch(`${API_BASE}/api/robot/disconnect`, { method: 'POST' });
+  if (!res.ok) throw new Error('Disconnect request failed');
+  return res.json();
+}
+
+export interface BLEDevice {
+  address: string;
+  name: string;
+  rssi: string;
+  is_agriguard: boolean;
+}
+
+export async function scanBluetoothDevices(): Promise<{
+  ok: boolean;
+  devices: BLEDevice[];
+  agriguard_devices: BLEDevice[];
+  found: boolean;
+}> {
+  // BLE scan takes ~8s — use a generous timeout
+  const res = await fetch(`${API_BASE}/api/robot/bluetooth/scan`, {
+    signal: AbortSignal.timeout(15000)
+  });
+  if (!res.ok) throw new Error('Bluetooth scan failed');
+  return res.json();
+}
+
+export async function connectRobotBluetooth(address: string): Promise<{
+  ok: boolean;
+  mode: string;
+  transport: string;
+  address: string;
+  is_connected: boolean;
+  ping_ms: number | null;
+  message: string;
+}> {
+  const res = await fetch(`${API_BASE}/api/robot/bluetooth/connect`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ address })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: 'BLE connection failed' }));
+    throw new Error(err.message || `HTTP ${res.status}`);
+  }
+  return res.json();
+}

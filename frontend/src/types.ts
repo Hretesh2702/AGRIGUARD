@@ -9,9 +9,41 @@ export interface CameraStatus {
 }
 
 export interface UltrasonicTelemetry {
+  left?: number | null;
+  center?: number | null;
+  right?: number | null;
   distance_cm: number;
-  valid: boolean;
-  obstacle_detected: boolean;
+  obstacle_status?: "SAFE" | "WARNING" | "OBSTACLE" | string;
+  robot_status?: string;
+  valid?: boolean;
+  obstacle_detected?: boolean;
+  obstacle_ahead?: boolean;
+  status?: string;
+}
+
+export interface DHT22Telemetry {
+  temperature: number;
+  humidity: number;
+  valid?: boolean;
+}
+
+export interface MPU6050Telemetry {
+  accel_x: number;
+  accel_y: number;
+  accel_z: number;
+  gyro_x: number;
+  gyro_y: number;
+  gyro_z: number;
+  pitch_deg?: number;
+  roll_deg?: number;
+  tilt_status?: string;
+  valid?: boolean;
+}
+
+export interface PumpTelemetry {
+  state: "ON" | "OFF" | string;
+  relay: "ON" | "OFF" | string;
+  spray_status?: "READY" | "ACTIVE" | string;
 }
 
 export interface IMUTelemetry {
@@ -28,10 +60,11 @@ export interface IMUTelemetry {
 }
 
 export interface SoilMoistureTelemetry {
-  raw_adc: number;
+  raw_adc?: number;
   moisture_pct: number;
-  valid: boolean;
-  status: string;
+  percentage?: number;
+  valid?: boolean;
+  status?: string;
 }
 
 export interface EnvironmentTelemetry {
@@ -59,6 +92,7 @@ export interface ActuatorsTelemetry {
   total_volume_ml?: number;
   motor_state: string;
   motor_speed: number;
+  spray_state?: string;
 }
 
 export interface SafetyTelemetry {
@@ -66,23 +100,30 @@ export interface SafetyTelemetry {
   watchdog_tripped: boolean;
   obstacle_detected?: boolean;
   physical_estop_pin?: boolean;
+  robot_status?: string;
   hardware_errors: string[];
 }
 
 export interface TelemetryData {
+  mode?: "SIMULATION" | "REAL_HARDWARE" | string;
+  hardware_mode?: "REAL_HARDWARE" | "SIMULATION" | string;
+  data_source?: "SIMULATION" | "ESP32_PHYSICAL" | string;
   esp32_connected: boolean;
-  hardware_mode?: "REAL_HARDWARE" | "SIMULATION";
   connection_state?: "CONNECTED" | "DISCONNECTED" | "RECONNECTING";
   timestamp_ms: number;
   active_zone_id: string;
   camera_status: CameraStatus;
   ultrasonic: UltrasonicTelemetry;
-  imu: IMUTelemetry;
-  soil_moisture: SoilMoistureTelemetry;
-  environment: EnvironmentTelemetry;
-  npk: NPKTelemetry;
-  actuators: ActuatorsTelemetry;
-  safety: SafetyTelemetry;
+  soil_moisture: any;
+  soil_moisture_status?: "DRY" | "NORMAL" | "WET" | string;
+  dht22?: DHT22Telemetry;
+  environment?: EnvironmentTelemetry;
+  mpu6050?: MPU6050Telemetry;
+  imu?: IMUTelemetry;
+  pump?: PumpTelemetry;
+  actuators?: ActuatorsTelemetry;
+  npk?: NPKTelemetry;
+  safety?: SafetyTelemetry;
   battery_voltage?: number | null;
   battery_percentage?: number | null;
   robot_location?: RobotPosition;

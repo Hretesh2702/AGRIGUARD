@@ -251,7 +251,7 @@ class DatabaseManager:
             """, (obs.timestamp, obs.zone_id, obs.x, obs.y, obs.latitude, obs.longitude,
                   obs.plant_id, obs.crop, obs.disease_detected,
                   obs.confidence, obs.severity, obs.affected_area_ratio, obs.plant_health_score,
-                  obs.image_snapshot_path, obs.reinspection_count))
+                  None, obs.reinspection_count))  # Camera frames/snapshots strictly excluded from database storage
             obs_id = cur.lastrowid
 
             # Update zone status

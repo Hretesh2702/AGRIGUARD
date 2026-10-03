@@ -117,7 +117,7 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
             processed["robot_location"] = location_tracker.get_location()
             processed["camera_status"] = camera.get_status()
             processed["esp32_ping_ms"] = esp32.last_ping_ms
-            processed["operating_mode"] = "Remote-controlled from the field site over a local Wi-Fi network"
+            processed["operating_mode"] = "Remote-controlled from the field site over a local Wi-Fi network" if esp32.hardware_mode == "REAL_HARDWARE" else "Simulated Hardware Telemetry (Active)"
 
             # Failsafe Watchdog: halt motors if client heartbeat dropped during motion
             global active_motion_in_progress
@@ -126,13 +126,13 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
                 esp32.send_motor_command(MotorCommand(direction="stop", speed=0))
                 active_motion_in_progress = False
 
-            # Record periodic reading to database if ESP32 is online
+            # Record periodic reading to database ONLY if physical ESP32 is confirmed online
             if processed.get("esp32_connected"):
                 db.record_sensors(SensorReading(
                     nitrogen_mg_kg=processed["npk"]["nitrogen_mg_kg"],
                     phosphorus_mg_kg=processed["npk"]["phosphorus_mg_kg"],
                     potassium_mg_kg=processed["npk"]["potassium_mg_kg"],
-                    soil_moisture_pct=processed["soil_moisture"]["moisture_pct"],
+                    soil_moisture_pct=processed["soil_moisture"]["moisture_pct"] if isinstance(processed["soil_moisture"], dict) else processed["soil_moisture"],
                     temperature_c=processed["environment"]["temperature_c"],
                     humidity_pct=processed["environment"]["humidity_pct"],
                     ultrasonic_distance_cm=processed["ultrasonic"]["distance_cm"],
@@ -144,7 +144,7 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
                 ))
 
             await websocket.send_json(processed)
-            await asyncio.sleep(0.2)  # 5 Hz broadcast rate
+            await asyncio.sleep(0.15)  # Smooth 6.6 Hz update rate (5-10 updates/sec target)
     except WebSocketDisconnect:
         ws_mgr.disconnect(websocket)
     except Exception as e:
@@ -271,6 +271,34 @@ def set_hardware_mode(req: HardwareModeRequest):
     }
 
 
+class SimulationPumpRequest(BaseModel):
+    state: Optional[str] = None  # "ON" or "OFF"
+    active: Optional[bool] = None
+
+
+@app.get("/api/simulation/pump")
+def get_simulation_pump():
+    """Returns current simulated pump and relay states."""
+    raw = esp32.fetch_real_telemetry()
+    return raw.get("pump", {"state": "OFF", "relay": "OFF", "spray_status": "READY"})
+
+
+@app.post("/api/simulation/pump")
+def set_simulation_pump(req: SimulationPumpRequest):
+    """
+    Actuates simulated pump and relay simultaneously.
+    Button press -> Simulated relay changes -> Pump status changes.
+    Does not activate real hardware.
+    """
+    if req.active is not None:
+        is_on = req.active
+    elif req.state:
+        is_on = req.state.upper().strip() == "ON"
+    else:
+        is_on = True
+    return esp32.set_simulated_pump(is_on)
+
+
 @app.post("/api/robot/command")
 def execute_robot_command(req: RobotCommandRequest):
     """
@@ -379,6 +407,112 @@ def receive_robot_heartbeat(payload: Optional[Dict[str, Any]] = None):
         "operating_mode": "Remote-controlled from the field site over a local Wi-Fi network",
         "esp32_heartbeat": esp32_res
     }
+
+
+# ==========================================
+# HARDWARE CONNECTIVITY
+# ==========================================
+
+class ConnectWiFiRequest(BaseModel):
+    ip: str
+    port: Optional[int] = 80
+
+
+class ConnectBluetoothRequest(BaseModel):
+    address: str  # BLE MAC address from scan results
+
+
+@app.post("/api/robot/connect")
+def connect_robot_wifi(req: ConnectWiFiRequest):
+    """
+    Connect to a physical ESP32 over Wi-Fi.
+    Updates IP/port, switches transport to REAL_HARDWARE, and pings.
+    """
+    esp32.set_ip(req.ip.strip(), req.port or 80)
+    esp32.set_hardware_mode("REAL_HARDWARE")
+    connected = esp32.check_connection()
+    return {
+        "ok": connected,
+        "mode": esp32.hardware_mode,
+        "transport": "wifi",
+        "esp32_ip": esp32.ip,
+        "esp32_port": esp32.port,
+        "is_connected": connected,
+        "ping_ms": esp32.last_ping_ms,
+        "message": f"Connected to {esp32.ip}" if connected else f"Cannot reach ESP32 at {esp32.ip}:{esp32.port}"
+    }
+
+
+@app.post("/api/robot/disconnect")
+def disconnect_robot():
+    """
+    Gracefully disconnects from hardware and returns to simulation mode.
+    """
+    esp32.set_hardware_mode("SIMULATION")
+    return {
+        "ok": True,
+        "mode": "SIMULATION",
+        "message": "Disconnected. Switched back to simulation mode."
+    }
+
+
+@app.get("/api/robot/bluetooth/scan")
+def bluetooth_scan_devices():
+    """
+    Scans nearby BLE devices for AgriGuard robots.
+    Returns all devices found; AgriGuard devices are flagged is_agriguard=True.
+    This is a blocking scan (≈8s) — call it asynchronously from the frontend.
+    """
+    from backend.communication.transport import BluetoothScanner
+    devices = BluetoothScanner.scan_sync(timeout=8.0)
+    agriguard_devices = [d for d in devices if d.get("is_agriguard")]
+    return {
+        "ok": True,
+        "devices": devices,
+        "agriguard_devices": agriguard_devices,
+        "found": len(agriguard_devices) > 0
+    }
+
+
+@app.post("/api/robot/bluetooth/connect")
+def connect_robot_bluetooth(req: ConnectBluetoothRequest):
+    """
+    Connect to a physical AgriGuard ESP32 via Bluetooth BLE.
+    Uses bleak for cross-platform BLE (Windows/macOS/Linux).
+    """
+    if not req.address:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="BLE device address is required. Run /api/robot/bluetooth/scan first.")
+
+    # Configure BLE transport with target device
+    esp32.bt_transport.set_device(req.address)
+
+    # Attempt BLE connection
+    connected = esp32.bt_transport.connect()
+
+    if connected:
+        # Switch active transport to Bluetooth
+        esp32.active_transport = esp32.bt_transport
+        esp32.hardware_mode = "REAL_HARDWARE"
+        return {
+            "ok": True,
+            "mode": "REAL_HARDWARE",
+            "transport": "bluetooth",
+            "address": req.address,
+            "is_connected": True,
+            "ping_ms": esp32.bt_transport.last_ping_ms,
+            "message": f"Bluetooth connected to AgriGuard at {req.address}"
+        }
+    else:
+        return {
+            "ok": False,
+            "mode": esp32.hardware_mode,
+            "transport": "bluetooth",
+            "address": req.address,
+            "is_connected": False,
+            "ping_ms": None,
+            "message": f"BLE connection failed to {req.address}. Ensure ESP32 is powered and in range."
+        }
 
 
 class NetworkConfigRequest(BaseModel):

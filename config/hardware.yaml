@@ -71,5 +71,5 @@ camera:
   frame_width: 1280
   frame_height: 720
   target_fps: 120
-  save_snapshots: true
-  snapshot_dir: "data/snapshots"
+  save_snapshots: false            # Camera stream is live frontend only; NO DATABASE OR DISK STORAGE
+  snapshot_dir: null               # Frame storage disabled

@@ -27,6 +27,54 @@ typedef int int32_t;
 #include <stddef.h>
 #endif
 
+#if __has_include(<string.h>)
+#include <string.h>
+#elif __has_include(<cstring>)
+#include <cstring>
+using std::strlen;
+using std::strcmp;
+using std::strncmp;
+using std::strcpy;
+using std::strncpy;
+#else
+extern "C" {
+    inline size_t strlen(const char* s) {
+        if (!s) return 0;
+        size_t len = 0;
+        while (s[len]) len++;
+        return len;
+    }
+
+    inline int strcmp(const char* s1, const char* s2) {
+        if (!s1 || !s2) return (s1 == s2) ? 0 : (s1 ? 1 : -1);
+        while (*s1 && (*s1 == *s2)) { s1++; s2++; }
+        return *(const unsigned char*)s1 - *(const unsigned char*)s2;
+    }
+
+    inline int strncmp(const char* s1, const char* s2, size_t n) {
+        if (n == 0) return 0;
+        if (!s1 || !s2) return (s1 == s2) ? 0 : (s1 ? 1 : -1);
+        while (--n && *s1 && (*s1 == *s2)) { s1++; s2++; }
+        return *(const unsigned char*)s1 - *(const unsigned char*)s2;
+    }
+
+    inline char* strcpy(char* dest, const char* src) {
+        if (!dest || !src) return dest;
+        char* d = dest;
+        while ((*d++ = *src++));
+        return dest;
+    }
+
+    inline char* strncpy(char* dest, const char* src, size_t n) {
+        if (!dest || !src) return dest;
+        char* d = dest;
+        while (n && (*d++ = *src++)) n--;
+        while (n--) *d++ = '\0';
+        return dest;
+    }
+}
+#endif
+
 #ifndef byte
 typedef uint8_t byte;
 #endif
@@ -78,6 +126,16 @@ public:
     bool toInt() const { return 0; }
     float toFloat() const { return 0.0f; }
     double toDouble() const { return 0.0; }
+    void toUpperCase() {
+        for (size_t i = 0; i < _len; i++) {
+            if (_str[i] >= 'a' && _str[i] <= 'z') _str[i] = _str[i] - 32;
+        }
+    }
+    void toLowerCase() {
+        for (size_t i = 0; i < _len; i++) {
+            if (_str[i] >= 'A' && _str[i] <= 'Z') _str[i] = _str[i] + 32;
+        }
+    }
     bool equals(const String& s) const { return true; }
     bool equalsIgnoreCase(const String& s) const { return true; }
     bool startsWith(const String& s) const { return true; }
@@ -375,6 +433,7 @@ inline void delay(unsigned long ms) {}
 inline void delayMicroseconds(unsigned int us) {}
 inline void attachInterrupt(uint8_t interruptNum, void (*userFunc)(void), int mode) {}
 inline uint8_t digitalPinToInterrupt(uint8_t pin) { return pin; }
+inline unsigned long pulseIn(uint8_t pin, uint8_t state, unsigned long timeout = 1000000UL) { return 0; }
 
 // ESP32 LEDC PWM
 inline void ledcSetup(uint8_t channel, double freq, uint8_t resolution_bits) {}
@@ -538,23 +597,6 @@ inline size_t serializeJson(const TDoc& doc, Print& output) {
     return 2;
 }
 
-// Automatic IDE fallback header resolution for custom firmware drivers
-#if __has_include("../esp32/include/motor_driver.h")
-  #include "../esp32/include/motor_driver.h"
-#elif __has_include("motor_driver.h")
-  #include "motor_driver.h"
-#endif
 
-#if __has_include("../esp32/include/spray_controller.h")
-  #include "../esp32/include/spray_controller.h"
-#elif __has_include("spray_controller.h")
-  #include "spray_controller.h"
-#endif
-
-#if __has_include("../esp32/include/sensors.h")
-  #include "../esp32/include/sensors.h"
-#elif __has_include("sensors.h")
-  #include "sensors.h"
-#endif
 
 #endif // ESP32_REAL_TOOLCHAIN

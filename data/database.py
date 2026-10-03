@@ -182,7 +182,7 @@ class Database:
                                          confidence, severity, health_score, image_path, bounding_box_json)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (now, data.zone_id, data.plant_id, data.crop, data.condition,
-                  data.confidence, data.severity, data.health_score, data.image_path, bb_json))
+                  data.confidence, data.severity, data.health_score, None, bb_json))  # Camera feed/image excluded from database
             obs_id = cur.lastrowid
 
             # Update zone status

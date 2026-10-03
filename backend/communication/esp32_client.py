@@ -45,9 +45,9 @@ class ESP32Client:
         self.bt_transport = BluetoothTransport()
         self.sim_transport = MockSimulationTransport()
 
-        # Operational Mode: "REAL_HARDWARE" vs "SIMULATION"
-        self.hardware_mode = "REAL_HARDWARE"
-        self.active_transport: RobotTransport = self.wifi_transport
+        # Operational Mode: "SIMULATION" (Default for disconnected prototype) vs "REAL_HARDWARE"
+        self.hardware_mode = os.getenv("AGRIGUARD_HARDWARE_MODE", "SIMULATION")
+        self.active_transport: RobotTransport = self.sim_transport if self.hardware_mode == "SIMULATION" else self.wifi_transport
 
         self.last_telemetry: Optional[Dict[str, Any]] = None
         self.last_telemetry_time = 0.0
@@ -155,7 +155,7 @@ class ESP32Client:
 
     def fetch_real_telemetry(self) -> Dict[str, Any]:
         """
-        Polls real hardware sensors from physical ESP32.
+        Polls real hardware sensors from physical ESP32 or Simulation Provider.
         If in REAL_HARDWARE mode and ESP32 is offline, strictly reports disconnected
         state without fabricating numbers.
         """
@@ -164,3 +164,8 @@ class ESP32Client:
         self.last_telemetry_time = time.time()
         telemetry["hardware_mode"] = self.hardware_mode
         return telemetry
+
+    def set_simulated_pump(self, active: bool) -> Dict[str, Any]:
+        """Toggles simulated pump and relay simultaneously without activating physical hardware."""
+        from backend.sensors.telemetry_provider import simulation_telemetry_provider
+        return simulation_telemetry_provider.set_pump(active)

@@ -73,9 +73,22 @@ export const Header: React.FC<HeaderProps> = ({
             <h1 style={{ fontSize: '1.25rem', fontWeight: 800, letterSpacing: '-0.02em', color: '#fff', margin: 0 }}>
               AgriGuard
             </h1>
-            <span className="status-pill status-online" style={{ fontSize: '0.62rem', padding: '0.15rem 0.45rem' }}>
-              REAL HARDWARE
-            </span>
+            {telemetry?.hardware_mode === 'SIMULATION' || telemetry?.mode === 'SIMULATION' || !esp32Connected ? (
+              <span className="status-pill" style={{
+                background: 'rgba(56, 189, 248, 0.15)',
+                color: 'var(--sky-400)',
+                border: '1px solid rgba(56, 189, 248, 0.35)',
+                fontSize: '0.62rem',
+                padding: '0.15rem 0.45rem',
+                fontWeight: 700
+              }}>
+                ● HARDWARE MODE: SIMULATION
+              </span>
+            ) : (
+              <span className="status-pill status-online" style={{ fontSize: '0.62rem', padding: '0.15rem 0.45rem', fontWeight: 700 }}>
+                ● HARDWARE: CONNECTED
+              </span>
+            )}
           </div>
           <p style={{
             fontSize: '0.70rem',
@@ -208,10 +221,10 @@ export const Header: React.FC<HeaderProps> = ({
             <span>Wi-Fi: {esp32Connected ? 'CONNECTED' : 'OFF'}</span>
           </div>
 
-          {/* ESP32 Robot Badge */}
-          <div className={`status-pill ${esp32Connected ? 'status-online' : 'status-offline'}`} style={{ fontSize: '0.66rem', padding: '0.3rem 0.5rem', justifyContent: 'center' }}>
+          {/* Hardware Status Badge */}
+          <div className={`status-pill ${esp32Connected ? 'status-online' : 'status-warning'}`} style={{ fontSize: '0.66rem', padding: '0.3rem 0.5rem', justifyContent: 'center' }}>
             <Radio size={11} />
-            <span>Robot: {esp32Connected ? `ONLINE ${pingMs ? `(${pingMs}ms)` : ''}` : 'OFF'}</span>
+            <span>Hardware: {esp32Connected ? `CONNECTED ${pingMs ? `(${pingMs}ms)` : ''}` : 'SIMULATION'}</span>
           </div>
 
           {/* Camera Badge */}

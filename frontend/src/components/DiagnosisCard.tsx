@@ -32,7 +32,9 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ detection, telemet
   const healthScore = isNonTarget ? 100 : (detection.plant_health_score ?? 100);
 
   // Real agronomic stress flags from telemetry
-  const soilMoisture = telemetry?.soil_moisture?.moisture_pct;
+  const soilMoisture = typeof telemetry?.soil_moisture === 'number'
+    ? telemetry.soil_moisture
+    : telemetry?.soil_moisture?.moisture_pct;
   const nitrogen = telemetry?.npk?.nitrogen_mg_kg;
 
   let waterStressLabel = 'NORMAL';

@@ -304,8 +304,8 @@ export const RobotControls: React.FC<RobotControlsProps> = ({
           </span>
           <span>
             Soil:{' '}
-            <strong style={{ color: (telemetry?.soil_moisture?.moisture_pct !== null && telemetry?.soil_moisture?.valid !== false) ? 'var(--emerald-400)' : 'var(--text-dim)' }}>
-              {(telemetry?.soil_moisture?.moisture_pct !== null && telemetry?.soil_moisture?.valid !== false) ? 'ONLINE' : 'OFFLINE'}
+            <strong style={{ color: ((typeof telemetry?.soil_moisture === 'number' ? telemetry.soil_moisture : telemetry?.soil_moisture?.moisture_pct) != null) ? 'var(--emerald-400)' : 'var(--text-dim)' }}>
+              {((typeof telemetry?.soil_moisture === 'number' ? telemetry.soil_moisture : telemetry?.soil_moisture?.moisture_pct) != null) ? 'ONLINE' : 'OFFLINE'}
             </strong>
           </span>
           <span>

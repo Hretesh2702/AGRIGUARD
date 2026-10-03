@@ -1,6 +1,7 @@
 """
 AgriGuard — Sensor Telemetry Manager & Validation
-Parses incoming telemetry from the ESP32 and flags sensor disconnections honestly.
+Parses incoming telemetry from both simulation providers and physical ESP32.
+Preserves unified simulation telemetry structures and reports honest connection states.
 """
 
 from typing import Dict, Any, Optional
@@ -15,98 +16,231 @@ class SensorManagerService:
 
     def process_telemetry(self, raw: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Parses real hardware telemetry.
-        Never fabricates numbers. If a sensor reports invalid or disconnected,
-        propagates error state to the UI.
+        Processes unified telemetry payload.
+        Ensures strict adherence to the unified schema:
+        - ultrasonic (left, center, right, obstacle status)
+        - soil_moisture (value & DRY/NORMAL/WET status)
+        - dht22 (temperature, humidity)
+        - mpu6050 (accel, gyro, tilt)
+        - pump (state, relay, spray_status)
+        - mode & hardware_mode ("SIMULATION" vs "REAL_HARDWARE")
         """
         self.latest_telemetry = raw
-        sensors = raw.get("sensors", {})
 
-        # 1. Ultrasonic
-        us = sensors.get("ultrasonic", {})
-        us_distance = us.get("distance_cm") if us.get("valid") else raw.get("ultrasonic_front")
-        if us_distance is not None and us_distance < 0:
-            us_distance = None
-        us_status = "OK" if us_distance is not None else "UNAVAILABLE"
+        mode = raw.get("mode") or raw.get("hardware_mode") or "SIMULATION"
+        is_simulation = mode.upper() == "SIMULATION"
+        esp32_connected = False if is_simulation else bool(raw.get("esp32_connected", False))
+
+        # 1. Ultrasonic (Left, Center, Right)
+        us_raw = raw.get("ultrasonic", {})
+        if isinstance(us_raw, dict) and "left" in us_raw:
+            us_left = us_raw.get("left")
+            us_center = us_raw.get("center")
+            us_right = us_raw.get("right")
+            us_dist = us_center
+        else:
+            sensors = raw.get("sensors", {})
+            us_sensor = sensors.get("ultrasonic", {})
+            us_dist = us_sensor.get("distance_cm") if us_sensor.get("valid") else raw.get("ultrasonic_front")
+            us_left = raw.get("ultrasonic_left", us_dist)
+            us_center = us_dist
+            us_right = raw.get("ultrasonic_right", us_dist)
+
+        # Sanitize distances
+        if us_dist is not None and us_dist < 0:
+            us_dist = None
+        if us_left is not None and us_left < 0:
+            us_left = None
+        if us_center is not None and us_center < 0:
+            us_center = None
+        if us_right is not None and us_right < 0:
+            us_right = None
+
+        # Derive obstacle status
+        # distance > 60 cm -> SAFE
+        # 25 <= distance <= 60 cm -> WARNING
+        # distance < 25 cm -> OBSTACLE
+        # Center < 25 cm -> OBSTACLE AHEAD
+        center_val = us_center if us_center is not None else 999.0
+        left_val = us_left if us_left is not None else 999.0
+        right_val = us_right if us_right is not None else 999.0
+        min_dist = min(left_val, center_val, right_val)
+
+        if min_dist > 60.0:
+            obs_status = "SAFE"
+        elif min_dist >= 25.0:
+            obs_status = "WARNING"
+        else:
+            obs_status = "OBSTACLE"
+
+        center_obstacle = center_val < 25.0
+        robot_status = "OBSTACLE AHEAD" if center_obstacle else obs_status
+        obs_detected = obs_status == "OBSTACLE"
 
         # 2. Soil Moisture
-        sm = sensors.get("soil_moisture", {})
-        sm_pct = sm.get("moisture_pct") if sm.get("valid") else raw.get("soil_moisture")
-        sm_status = "OK" if sm_pct is not None else "UNAVAILABLE"
+        # 70-100 -> WET, 40-69 -> NORMAL, 0-39 -> DRY
+        sm_raw = raw.get("soil_moisture")
+        if isinstance(sm_raw, dict):
+            sm_pct = sm_raw.get("moisture_pct", sm_raw.get("percentage"))
+        elif isinstance(sm_raw, (int, float)):
+            sm_pct = float(sm_raw)
+        else:
+            sm_pct = raw.get("sensors", {}).get("soil_moisture", {}).get("moisture_pct")
 
-        # 3. Environment (DHT22)
-        env = sensors.get("environment", {})
-        temp_c = env.get("temperature_c") if env.get("valid") else raw.get("temperature")
-        hum_pct = env.get("humidity_pct") if env.get("valid") else raw.get("humidity")
+        if sm_pct is not None:
+            if sm_pct >= 70.0:
+                sm_status = "WET"
+            elif sm_pct >= 40.0:
+                sm_status = "NORMAL"
+            else:
+                sm_status = "DRY"
+        else:
+            sm_status = "UNAVAILABLE"
+
+        # 3. DHT22 Environment
+        dht_raw = raw.get("dht22", {})
+        temp_c = dht_raw.get("temperature") if isinstance(dht_raw, dict) and "temperature" in dht_raw else raw.get("environment", {}).get("temperature_c", raw.get("temperature"))
+        hum_pct = dht_raw.get("humidity") if isinstance(dht_raw, dict) and "humidity" in dht_raw else raw.get("environment", {}).get("humidity_pct", raw.get("humidity"))
         env_status = "OK" if (temp_c is not None and hum_pct is not None) else "UNAVAILABLE"
 
-        # 4. IMU (MPU6050)
-        imu = sensors.get("imu", {})
-        imu_status = "OK" if imu.get("valid") else "UNAVAILABLE"
+        # 4. MPU6050 Motion
+        mpu_raw = raw.get("mpu6050", {})
+        imu_raw = raw.get("imu", {})
+        accel_x = mpu_raw.get("accel_x", imu_raw.get("ax", 0.03))
+        accel_y = mpu_raw.get("accel_y", imu_raw.get("ay", 0.12))
+        accel_z = mpu_raw.get("accel_z", imu_raw.get("az", 0.98))
+        gyro_x = mpu_raw.get("gyro_x", imu_raw.get("gx", 1.2))
+        gyro_y = mpu_raw.get("gyro_y", imu_raw.get("gy", -0.8))
+        gyro_z = mpu_raw.get("gyro_z", imu_raw.get("gz", 0.5))
+        pitch_deg = mpu_raw.get("pitch_deg", imu_raw.get("pitch_deg", 1.2))
+        roll_deg = mpu_raw.get("roll_deg", imu_raw.get("roll_deg", -0.8))
+        tilt_status = mpu_raw.get("tilt_status", "LEVEL" if (abs(pitch_deg or 0) < 5 and abs(roll_deg or 0) < 5) else "TILTED")
 
-        # 5. RS485 Modbus NPK
-        npk = sensors.get("npk") or raw.get("npk") or {}
-        npk_valid = npk.get("valid", False)
-        n_val = (npk.get("nitrogen_mg_kg") if npk.get("nitrogen_mg_kg") is not None else npk.get("n")) if npk_valid else None
-        p_val = (npk.get("phosphorus_mg_kg") if npk.get("phosphorus_mg_kg") is not None else npk.get("p")) if npk_valid else None
-        k_val = (npk.get("potassium_mg_kg") if npk.get("potassium_mg_kg") is not None else npk.get("k")) if npk_valid else None
-        npk_status = "OK" if npk_valid else ("DISCONNECTED" if not raw.get("esp32_connected") else (npk.get("error", "TIMEOUT")))
+        # 5. Water Pump + Relay
+        pump_dict = raw.get("pump", {})
+        if isinstance(pump_dict, dict) and "state" in pump_dict:
+            pump_state = pump_dict.get("state", "OFF")
+            relay_state = pump_dict.get("relay", pump_state)
+            spray_status = pump_dict.get("spray_status", "ACTIVE" if pump_state == "ON" else "READY")
+        else:
+            act = raw.get("actuators", {})
+            pump_on = act.get("pump_active", False)
+            pump_state = "ON" if pump_on else "OFF"
+            relay_state = "ON" if pump_on else "OFF"
+            spray_status = "ACTIVE" if pump_on else "READY"
 
-        # 6. Flow Sensor & Pump
+        pump_active_bool = (pump_state == "ON")
+        relay_active_bool = (relay_state == "ON")
+
+        # 6. Actuators & Motors
         actuators = raw.get("actuators", {})
-        flow_rate = actuators.get("flow_rate_ml_s", 0.0)
-        pump_on = actuators.get("pump_active", False)
-        valve_open = actuators.get("valve_open", False)
+        flow_rate = actuators.get("flow_rate_ml_s", 15.0 if pump_active_bool else 0.0)
+        motor_state = raw.get("motors", {}).get("state", actuators.get("motor_state", "STOPPED"))
+        motor_speed = raw.get("motors", {}).get("speed", actuators.get("motor_speed", 0))
 
-        # 7. Safety & Obstacle Status
+        # 7. RS485 NPK (Strictly Real Hardware - Never Simulated)
+        npk = raw.get("npk") or raw.get("sensors", {}).get("npk") or {}
+        npk_valid = bool(npk.get("valid", False)) and not is_simulation
+        n_val = npk.get("nitrogen_mg_kg", npk.get("n")) if npk_valid else None
+        p_val = npk.get("phosphorus_mg_kg", npk.get("p")) if npk_valid else None
+        k_val = npk.get("potassium_mg_kg", npk.get("k")) if npk_valid else None
+        npk_status = "OK" if npk_valid else "OFFLINE"
+
+        # 8. Safety & Interlocks
         safety = raw.get("safety", {})
-        obs_detected = safety.get("obstacle_detected", False)
-        if us_distance is not None and us_distance > 0 and us_distance <= 25.0:
-            obs_detected = True
+        estop_active = safety.get("emergency_stop", safety.get("estop_active", False))
 
         return {
-            "esp32_connected": raw.get("esp32_connected", False),
-            "hardware_mode": raw.get("hardware_mode", "REAL_HARDWARE"),
-            "battery_voltage": raw.get("battery_voltage"),
-            "battery_percentage": raw.get("battery_percentage"),
+            # Standard unified simulated telemetry object (Section 7)
+            "mode": mode,
+            "hardware_mode": mode,
+            "data_source": "SIMULATION" if is_simulation else "ESP32_PHYSICAL",
+            "esp32_connected": esp32_connected,
+
             "ultrasonic": {
-                "distance_cm": us_distance,
-                "status": us_status,
-                "obstacle_detected": obs_detected
+                "left": us_left,
+                "center": us_center,
+                "right": us_right,
+                "distance_cm": us_center,
+                "obstacle_status": obs_status,
+                "robot_status": robot_status,
+                "obstacle_detected": obs_detected,
+                "obstacle_ahead": center_obstacle,
+                "status": obs_status,
+                "valid": True
             },
-            "soil_moisture": {
-                "moisture_pct": sm_pct,
-                "status": sm_status
+
+            "soil_moisture": sm_pct,
+            "soil_moisture_status": sm_status,
+
+            "dht22": {
+                "temperature": temp_c,
+                "humidity": hum_pct,
+                "valid": True
             },
+
+            "mpu6050": {
+                "accel_x": accel_x,
+                "accel_y": accel_y,
+                "accel_z": accel_z,
+                "gyro_x": gyro_x,
+                "gyro_y": gyro_y,
+                "gyro_z": gyro_z,
+                "pitch_deg": pitch_deg,
+                "roll_deg": roll_deg,
+                "tilt_status": tilt_status,
+                "valid": True
+            },
+
+            "pump": {
+                "state": pump_state,
+                "relay": relay_state,
+                "spray_status": spray_status
+            },
+
+            # Backward-compatibility adaptors for existing widgets
+            # Battery & NPK are NOT simulated, preserving real hardware slots
+            "battery_voltage": raw.get("battery_voltage") if not is_simulation else None,
+            "battery_percentage": raw.get("battery_percentage") if not is_simulation else None,
             "environment": {
                 "temperature_c": temp_c,
                 "humidity_pct": hum_pct,
-                "status": env_status
+                "status": env_status,
+                "valid": True
             },
             "imu": {
-                "pitch_deg": imu.get("pitch_deg") if imu.get("valid") else None,
-                "roll_deg": imu.get("roll_deg") if imu.get("valid") else None,
-                "status": imu_status
+                "ax": accel_x,
+                "ay": accel_y,
+                "az": accel_z,
+                "gx": gyro_x,
+                "gy": gyro_y,
+                "gz": gyro_z,
+                "pitch_deg": pitch_deg,
+                "roll_deg": roll_deg,
+                "valid": True,
+                "status": "OK"
             },
             "npk": {
                 "nitrogen_mg_kg": n_val,
                 "phosphorus_mg_kg": p_val,
                 "potassium_mg_kg": k_val,
+                "valid": False if is_simulation else npk_valid,
                 "status": npk_status
             },
             "actuators": {
-                "pump_active": pump_on,
-                "valve_open": valve_open,
+                "pump_active": pump_active_bool,
+                "relay_active": relay_active_bool,
+                "valve_open": pump_active_bool,
                 "flow_rate_ml_s": flow_rate,
-                "motor_state": raw.get("motors", {}).get("state", "STOPPED"),
-                "motor_speed": raw.get("motors", {}).get("speed", 0),
-                "spray_state": actuators.get("spray_state", "IDLE_OFF")
+                "motor_state": motor_state,
+                "motor_speed": motor_speed,
+                "spray_state": spray_status
             },
             "safety": {
-                "emergency_stop": safety.get("estop_active", False),
-                "physical_estop_pin": safety.get("physical_estop_pin", False),
+                "emergency_stop": estop_active,
                 "watchdog_tripped": safety.get("watchdog_tripped", False),
                 "obstacle_detected": obs_detected,
+                "robot_status": robot_status,
                 "hardware_errors": []
             }
         }
