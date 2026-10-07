@@ -103,57 +103,86 @@ export const SimulatedViewPage: React.FC = () => {
     const handleResize = () => scene.resize();
     window.addEventListener('resize', handleResize);
 
-    // Keyboard Movement Listener (W/A/S/D and Arrow Keys)
-    const handleKeyDown = (e: KeyboardEvent) => {
-      buzzerAudio.unlockAudio();
-      if ((e.target as HTMLElement).tagName === 'INPUT') return;
+    // Keyboard Movement Listener (W/A/S/D and Arrow Keys) with active keys tracking
+    const activeKeys = new Set<string>();
 
-      switch (e.key) {
-        case 'w':
-        case 'W':
-        case 'ArrowUp':
-          e.preventDefault();
-          manager.move('FORWARD');
-          break;
-        case 's':
-        case 'S':
-        case 'ArrowDown':
-          e.preventDefault();
-          manager.move('BACKWARD');
-          break;
-        case 'a':
-        case 'A':
-        case 'ArrowLeft':
-          e.preventDefault();
-          manager.move('LEFT');
-          break;
-        case 'd':
-        case 'D':
-        case 'ArrowRight':
-          e.preventDefault();
-          manager.move('RIGHT');
-          break;
-        case ' ':
-          e.preventDefault();
-          manager.move('STOP');
-          break;
+    const updateMovementFromKeys = () => {
+      const linearSpeedMps = (manager.getSpeedPwm() / 255.0) * 1.35;
+      const angularSpeedRps = 1.35;
+
+      const isUp = activeKeys.has('w') || activeKeys.has('W') || activeKeys.has('ArrowUp');
+      const isDown = activeKeys.has('s') || activeKeys.has('S') || activeKeys.has('ArrowDown');
+      const isLeft = activeKeys.has('a') || activeKeys.has('A') || activeKeys.has('ArrowLeft');
+      const isRight = activeKeys.has('d') || activeKeys.has('D') || activeKeys.has('ArrowRight');
+
+      let linear = 0;
+      let turn = 0;
+
+      if (isUp && !isDown) linear = linearSpeedMps;
+      else if (isDown && !isUp) linear = -linearSpeedMps * 0.75;
+
+      if (isLeft && !isRight) {
+        // If driving forward/backward, turn smoothly along an arc (0.8x rate)
+        turn = linear !== 0 ? -angularSpeedRps * 0.8 : -angularSpeedRps;
+      } else if (isRight && !isLeft) {
+        turn = linear !== 0 ? angularSpeedRps * 0.8 : angularSpeedRps;
+      }
+
+      if (linear === 0 && turn === 0) {
+        manager.move('STOP');
+      } else if (linear !== 0 && turn === 0) {
+        manager.move(linear > 0 ? 'FORWARD' : 'BACKWARD');
+      } else if (linear === 0 && turn !== 0) {
+        manager.move(turn < 0 ? 'LEFT' : 'RIGHT');
+      } else {
+        // Combined arc steering
+        manager.steerCombined(linear, turn);
       }
     };
 
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement).tagName === 'INPUT') return;
-      if (['w', 'W', 's', 'S', 'a', 'A', 'd', 'D', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      buzzerAudio.unlockAudio();
+      if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') return;
+
+      const movementKeys = ['w', 'W', 's', 'S', 'a', 'A', 'd', 'D', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+      if (movementKeys.includes(e.key)) {
+        e.preventDefault();
+        activeKeys.add(e.key);
+        updateMovementFromKeys();
+      } else if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault();
+        activeKeys.clear();
         manager.move('STOP');
       }
     };
 
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') return;
+
+      const movementKeys = ['w', 'W', 's', 'S', 'a', 'A', 'd', 'D', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+      if (movementKeys.includes(e.key)) {
+        e.preventDefault();
+        activeKeys.delete(e.key);
+        activeKeys.delete(e.key.toLowerCase());
+        activeKeys.delete(e.key.toUpperCase());
+        updateMovementFromKeys();
+      }
+    };
+
+    const handleBlur = () => {
+      activeKeys.clear();
+      manager.move('STOP');
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
 
     return () => {
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
       manager.dispose();
       scene.destroy();
       sceneRef.current = null;
@@ -272,10 +301,54 @@ export const SimulatedViewPage: React.FC = () => {
     setIsAudioMuted(muted);
   };
 
-  // Movement Helper
+  const pointerStartTimeRef = useRef<number>(0);
+  const clickPulseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Movement Helper (supports hold-to-move, click pulse, and immediate stop)
   const handleMove = (cmd: SimulationMovementCommand) => {
     buzzerAudio.unlockAudio();
+    if (clickPulseTimerRef.current) {
+      clearTimeout(clickPulseTimerRef.current);
+      clickPulseTimerRef.current = null;
+    }
     managerRef.current?.move(cmd);
+  };
+
+  const handlePointerDown = (cmd: SimulationMovementCommand) => {
+    buzzerAudio.unlockAudio();
+    if (clickPulseTimerRef.current) {
+      clearTimeout(clickPulseTimerRef.current);
+      clickPulseTimerRef.current = null;
+    }
+    if (cmd === 'STOP') {
+      managerRef.current?.move('STOP');
+      return;
+    }
+    pointerStartTimeRef.current = Date.now();
+    managerRef.current?.move(cmd);
+  };
+
+  const handlePointerUp = (cmd: SimulationMovementCommand) => {
+    if (cmd === 'STOP') return;
+    const elapsed = Date.now() - pointerStartTimeRef.current;
+    if (elapsed < 200) {
+      // Quick tap/click: sustain a visible 450ms movement pulse then stop
+      if (clickPulseTimerRef.current) clearTimeout(clickPulseTimerRef.current);
+      clickPulseTimerRef.current = setTimeout(() => {
+        managerRef.current?.move('STOP');
+      }, 450);
+    } else {
+      // Held down: stop immediately on release
+      managerRef.current?.move('STOP');
+    }
+  };
+
+  const handlePointerLeave = (cmd: SimulationMovementCommand) => {
+    if (cmd === 'STOP') return;
+    const elapsed = Date.now() - pointerStartTimeRef.current;
+    if (elapsed >= 200) {
+      managerRef.current?.move('STOP');
+    }
   };
 
   // Scenario Changer
@@ -1020,7 +1093,9 @@ export const SimulatedViewPage: React.FC = () => {
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem' }}>
               <button
                 type="button"
-                onClick={() => handleMove('FORWARD')}
+                onPointerDown={() => handlePointerDown('FORWARD')}
+                onPointerUp={() => handlePointerUp('FORWARD')}
+                onPointerLeave={() => handlePointerLeave('FORWARD')}
                 className="btn"
                 style={{
                   width: '52px',
@@ -1031,8 +1106,11 @@ export const SimulatedViewPage: React.FC = () => {
                   borderRadius: '8px',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center'
+                  justifyContent: 'center',
+                  touchAction: 'none',
+                  userSelect: 'none'
                 }}
+                title="Forward (W / Up Arrow)"
               >
                 <ArrowUp size={20} />
               </button>
@@ -1040,7 +1118,9 @@ export const SimulatedViewPage: React.FC = () => {
               <div style={{ display: 'flex', gap: '0.35rem' }}>
                 <button
                   type="button"
-                  onClick={() => handleMove('LEFT')}
+                  onPointerDown={() => handlePointerDown('LEFT')}
+                  onPointerUp={() => handlePointerUp('LEFT')}
+                  onPointerLeave={() => handlePointerLeave('LEFT')}
                   className="btn"
                   style={{
                     width: '52px',
@@ -1051,8 +1131,11 @@ export const SimulatedViewPage: React.FC = () => {
                     borderRadius: '8px',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center'
+                    justifyContent: 'center',
+                    touchAction: 'none',
+                    userSelect: 'none'
                   }}
+                  title="Pivot Left (A / Left Arrow)"
                 >
                   <ArrowLeft size={20} />
                 </button>
@@ -1072,15 +1155,19 @@ export const SimulatedViewPage: React.FC = () => {
                     fontSize: '0.75rem',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center'
+                    justifyContent: 'center',
+                    userSelect: 'none'
                   }}
+                  title="Halt Motors (Space)"
                 >
                   STOP
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => handleMove('RIGHT')}
+                  onPointerDown={() => handlePointerDown('RIGHT')}
+                  onPointerUp={() => handlePointerUp('RIGHT')}
+                  onPointerLeave={() => handlePointerLeave('RIGHT')}
                   className="btn"
                   style={{
                     width: '52px',
@@ -1091,8 +1178,11 @@ export const SimulatedViewPage: React.FC = () => {
                     borderRadius: '8px',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center'
+                    justifyContent: 'center',
+                    touchAction: 'none',
+                    userSelect: 'none'
                   }}
+                  title="Pivot Right (D / Right Arrow)"
                 >
                   <ArrowRight size={20} />
                 </button>
@@ -1100,7 +1190,9 @@ export const SimulatedViewPage: React.FC = () => {
 
               <button
                 type="button"
-                onClick={() => handleMove('BACKWARD')}
+                onPointerDown={() => handlePointerDown('BACKWARD')}
+                onPointerUp={() => handlePointerUp('BACKWARD')}
+                onPointerLeave={() => handlePointerLeave('BACKWARD')}
                 className="btn"
                 style={{
                   width: '52px',
@@ -1111,8 +1203,11 @@ export const SimulatedViewPage: React.FC = () => {
                   borderRadius: '8px',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center'
+                  justifyContent: 'center',
+                  touchAction: 'none',
+                  userSelect: 'none'
                 }}
+                title="Reverse (S / Down Arrow)"
               >
                 <ArrowDown size={20} />
               </button>

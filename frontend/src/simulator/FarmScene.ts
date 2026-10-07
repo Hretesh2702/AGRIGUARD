@@ -551,27 +551,27 @@ export class FarmScene {
         this.plants.push(plant);
         this.createBotanicalCropMesh(plant);
 
-        // Solid non-drivable collision cylinder around every plant
-        this.colliders.push({ x: rx, z: pz, radius: 0.55 });
+        // Realistic collision cylinder around plant stalk and root mound
+        this.colliders.push({ x: rx, z: pz, radius: 0.18 });
         plantCounter++;
       }
     });
 
     // Realistic Field Obstacles (Exactly matching the reference image):
-    // 1. Natural Granite Boulder sitting on right side of Center Lane (X: 0.9, Z: -2.0)
-    // 2. Plastic Harvesting Crate sitting in lane (X: 0.0, Z: 5.0)
+    // 1. Natural Granite Boulder sitting on right side of Center Lane (X: 0.92, Z: -2.2)
+    // 2. Plastic Harvesting Crate sitting in lane (X: 0.0, Z: 6.5)
     // 3. Smaller rock obstacle
     const fieldObstacles: ObstacleObject[] = [
-      { id: 'OBS-BOULDER-1', type: 'ROCK', position: { x: 0.92, y: 0.38, z: -2.2 }, radius: 0.48, height: 0.72 },
-      { id: 'OBS-CRATE-1', type: 'CRATE', position: { x: 0.0, y: 0.28, z: 6.5 }, radius: 0.42, height: 0.55 },
-      { id: 'OBS-BOULDER-2', type: 'ROCK', position: { x: -3.0, y: 0.32, z: -8.0 }, radius: 0.44, height: 0.65 },
-      { id: 'OBS-IRRIG-1', type: 'IRRIGATION_BOX', position: { x: 3.0, y: 0.35, z: 8.5 }, radius: 0.38, height: 0.7 },
+      { id: 'OBS-BOULDER-1', type: 'ROCK', position: { x: 0.92, y: 0.38, z: -2.2 }, radius: 0.42, height: 0.72 },
+      { id: 'OBS-CRATE-1', type: 'CRATE', position: { x: 0.0, y: 0.28, z: 6.5 }, radius: 0.38, height: 0.55 },
+      { id: 'OBS-BOULDER-2', type: 'ROCK', position: { x: -3.0, y: 0.32, z: -8.0 }, radius: 0.40, height: 0.65 },
+      { id: 'OBS-IRRIG-1', type: 'IRRIGATION_BOX', position: { x: 3.0, y: 0.35, z: 8.5 }, radius: 0.35, height: 0.7 },
     ];
 
     fieldObstacles.forEach((obs) => {
       this.obstacles.push(obs);
       this.createObstacle3DMesh(obs);
-      this.colliders.push({ x: obs.position.x, z: obs.position.z, radius: obs.radius + 0.15 });
+      this.colliders.push({ x: obs.position.x, z: obs.position.z, radius: obs.radius });
     });
   }
 
@@ -971,10 +971,10 @@ export class FarmScene {
     const rightDirX = Math.cos(this.robotHeading);
     const rightDirZ = Math.sin(this.robotHeading);
 
-    // Sensor Mount Origins on Rover
-    const centerOrigin = new THREE.Vector3(this.robotX + fwdX * 1.35, originY, this.robotZ + fwdZ * 1.35);
-    const leftOrigin = new THREE.Vector3(this.robotX + leftDirX * 1.05, originY, this.robotZ + leftDirZ * 1.05);
-    const rightOrigin = new THREE.Vector3(this.robotX + rightDirX * 1.05, originY, this.robotZ + rightDirZ * 1.05);
+    // Sensor Mount Origins on Rover (Front PVC bumper & lateral frame rails)
+    const centerOrigin = new THREE.Vector3(this.robotX + fwdX * 0.75, originY, this.robotZ + fwdZ * 0.75);
+    const leftOrigin = new THREE.Vector3(this.robotX + leftDirX * 0.55, originY, this.robotZ + leftDirZ * 0.55);
+    const rightOrigin = new THREE.Vector3(this.robotX + rightDirX * 0.55, originY, this.robotZ + rightDirZ * 0.55);
 
     const centerDir = new THREE.Vector3(fwdX, 0, fwdZ).normalize();
     const leftDir = new THREE.Vector3(leftDirX, 0, leftDirZ).normalize();
@@ -1001,16 +1001,16 @@ export class FarmScene {
       }
 
       // 2. Analytical Acoustic Cone Intersection against all physical field colliders
-      // HC-SR04 ultrasonic sound waves emanate in a ~30 degree cone
+      // HC-SR04 ultrasonic sound waves emanate in a ~20 degree acoustic cone
       for (const col of this.colliders) {
         const dx = col.x - origin.x;
         const dz = col.z - origin.z;
         const proj = dx * dir.x + dz * dir.z;
         if (proj > 0.08 && proj < minDist) {
           const perp = Math.abs(dx * (-dir.z) + dz * dir.x);
-          const coneRadiusAtDist = col.radius + proj * 0.35; // ~20 deg spread
+          const coneRadiusAtDist = col.radius + proj * 0.26;
           if (perp <= coneRadiusAtDist) {
-            const surfaceDist = Math.max(0.12, proj - col.radius * 0.85);
+            const surfaceDist = Math.max(0.12, proj - col.radius * 0.6);
             if (surfaceDist < minDist) {
               minDist = surfaceDist;
             }
@@ -1078,22 +1078,35 @@ export class FarmScene {
   // ───────────────────────────────────────────────────────────────────────────
   // Non-Drivable Crop Boundaries & Collision Checking
   // ───────────────────────────────────────────────────────────────────────────
-  public checkCollision(proposedX: number, proposedZ: number): boolean {
-    const robotRadius = 0.68; // Bounding radius of AgriGuard prototype rover
+  public checkCollision(proposedX: number, proposedZ: number, currX?: number, currZ?: number): boolean {
+    const robotRadius = 0.42; // Real bounding radius of AgriGuard prototype rover chassis footprint
 
-    // 1. Field Boundary Collisions (Keep inside ranch fence)
-    const maxHalfW = this.fieldWidth / 2 - 0.9;
-    const maxHalfL = this.fieldLength / 2 - 0.9;
+    // 1. Field Boundary Collisions (Keep inside ranch fence perimeter)
+    const maxHalfW = this.fieldWidth / 2 - 1.2;
+    const maxHalfL = this.fieldLength / 2 - 1.2;
     if (Math.abs(proposedX) > maxHalfW || Math.abs(proposedZ) > maxHalfL) {
       return true; // Collided with field perimeter fence
     }
 
-    // 2. Solid Obstacle and Crop Stalk Collisions (Never drive over crops)
+    // 2. Solid Obstacle and Crop Stalk Collisions
     for (const collider of this.colliders) {
       const dx = proposedX - collider.x;
       const dz = proposedZ - collider.z;
       const minDist = robotRadius + collider.radius;
-      if (dx * dx + dz * dz < minDist * minDist) {
+      const proposedDistSq = dx * dx + dz * dz;
+      const minDistSq = minDist * minDist;
+
+      if (proposedDistSq < minDistSq) {
+        // If moving AWAY from the collider (e.g. reversing or steering out), ALLOW IT!
+        if (currX !== undefined && currZ !== undefined) {
+          const currDx = currX - collider.x;
+          const currDz = currZ - collider.z;
+          const currDistSq = currDx * currDx + currDz * currDz;
+          if (proposedDistSq >= currDistSq) {
+            // Distance is increasing -> moving away from obstacle!
+            continue;
+          }
+        }
         return true; // Path blocked by crop or obstacle
       }
     }
@@ -1109,14 +1122,15 @@ export class FarmScene {
     let blocked = false;
 
     // 1. Center Obstacle Safety Hard-Stop
+    // Only triggers when attempting to drive forward directly into an obstacle < 25cm
     if (centerUltrasonicCm < SAFETY_THRESHOLDS.OBSTACLE_CM && this.targetSpeed > 0) {
       this.targetSpeed = 0;
       safetyStop = true;
     }
 
-    // 2. Smooth acceleration
-    this.robotSpeed = THREE.MathUtils.lerp(this.robotSpeed, this.targetSpeed, 0.16);
-    this.turnRate = THREE.MathUtils.lerp(this.turnRate, this.targetTurnRate, 0.16);
+    // 2. Smooth acceleration / deceleration
+    this.robotSpeed = THREE.MathUtils.lerp(this.robotSpeed, this.targetSpeed, 0.18);
+    this.turnRate = THREE.MathUtils.lerp(this.turnRate, this.targetTurnRate, 0.18);
 
     // 3. Differential Heading Integration
     if (Math.abs(this.turnRate) > 0.001) {
@@ -1125,7 +1139,7 @@ export class FarmScene {
       this.robotHeading = (this.robotHeading + Math.PI * 2) % (Math.PI * 2);
     }
 
-    // 4. Proposed Position Step
+    // 4. Proposed Position Step & Corridor Sliding
     if (Math.abs(this.robotSpeed) > 0.001) {
       const moveDelta = this.robotSpeed * deltaSec;
       // Heading 0 = North (along -Z)
@@ -1136,29 +1150,39 @@ export class FarmScene {
       const proposedZ = this.robotZ + fwdZ * moveDelta;
 
       // Check Collision against crops, boundaries, and obstacles
-      if (this.checkCollision(proposedX, proposedZ)) {
-        // Block movement! Do NOT drive over plants!
-        this.robotSpeed = 0;
-        this.targetSpeed = 0;
-        blocked = true;
+      if (this.checkCollision(proposedX, proposedZ, this.robotX, this.robotZ)) {
+        // Try corridor sliding down Z (along crop furrows)
+        if (!this.checkCollision(this.robotX, proposedZ, this.robotX, this.robotZ)) {
+          this.robotZ = proposedZ;
+        } else if (!this.checkCollision(proposedX, this.robotZ, this.robotX, this.robotZ)) {
+          // Slide along X
+          this.robotX = proposedX;
+        } else {
+          // Both axes blocked: halt forward motion smoothly
+          this.robotSpeed = 0;
+          this.targetSpeed = 0;
+          blocked = true;
+        }
       } else {
         this.robotX = proposedX;
         this.robotZ = proposedZ;
-
-        // Differential Wheel Rotation Animation
-        const wheelCircumference = Math.PI * 0.7; // ~0.35m radius wheels
-        const leftSpeed = this.robotSpeed - this.turnRate * 0.55;
-        const rightSpeed = this.robotSpeed + this.turnRate * 0.55;
-
-        this.wheelAngleLeft += (leftSpeed * deltaSec / wheelCircumference) * Math.PI * 2 * 3.5;
-        this.wheelAngleRight += (rightSpeed * deltaSec / wheelCircumference) * Math.PI * 2 * 3.5;
-
-        const { frontLeft, rearLeft, frontRight, rearRight } = this.robotRefs.wheels;
-        frontLeft.rotation.x = this.wheelAngleLeft;
-        rearLeft.rotation.x = this.wheelAngleLeft;
-        frontRight.rotation.x = this.wheelAngleRight;
-        rearRight.rotation.x = this.wheelAngleRight;
       }
+    }
+
+    // 5. Differential Wheel Rotation Animation (runs on translation OR pivot in place)
+    if (Math.abs(this.robotSpeed) > 0.001 || Math.abs(this.turnRate) > 0.001) {
+      const wheelCircumference = Math.PI * 0.7; // ~0.35m radius wheels
+      const leftSpeed = this.robotSpeed - this.turnRate * 0.55;
+      const rightSpeed = this.robotSpeed + this.turnRate * 0.55;
+
+      this.wheelAngleLeft += (leftSpeed * deltaSec / wheelCircumference) * Math.PI * 2 * 3.5;
+      this.wheelAngleRight += (rightSpeed * deltaSec / wheelCircumference) * Math.PI * 2 * 3.5;
+
+      const { frontLeft, rearLeft, frontRight, rearRight } = this.robotRefs.wheels;
+      frontLeft.rotation.x = this.wheelAngleLeft;
+      rearLeft.rotation.x = this.wheelAngleLeft;
+      frontRight.rotation.x = this.wheelAngleRight;
+      rearRight.rotation.x = this.wheelAngleRight;
     }
 
     // Synchronize 3D Robot Model Transform

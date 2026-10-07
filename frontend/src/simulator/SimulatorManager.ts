@@ -130,6 +130,10 @@ export class SimulatorManager {
     return this.detectedPlant;
   }
 
+  public getSpeedPwm(): number {
+    return this.speedPwm;
+  }
+
   // ───────────────────────────────────────────────────────────────────────────
   // User Movement Controls (Identical to Real Hardware Interface)
   // ───────────────────────────────────────────────────────────────────────────
@@ -141,7 +145,7 @@ export class SimulatorManager {
 
     // Convert speed PWM (80-255) to real meters/sec (0.4 to 1.4 m/s)
     const linearSpeedMps = (this.speedPwm / 255.0) * 1.35;
-    const angularSpeedRps = 1.25; // turning rate
+    const angularSpeedRps = 1.35; // turning rate
 
     switch (command) {
       case 'FORWARD':
@@ -162,12 +166,14 @@ export class SimulatorManager {
         break;
 
       case 'LEFT':
-        this.scene.targetSpeed = linearSpeedMps * 0.25;
+        // Differential In-Place Pivot (Zero forward creep, exactly matching physical AgriGuard)
+        this.scene.targetSpeed = 0;
         this.scene.targetTurnRate = -angularSpeedRps;
         break;
 
       case 'RIGHT':
-        this.scene.targetSpeed = linearSpeedMps * 0.25;
+        // Differential In-Place Pivot (Zero forward creep, exactly matching physical AgriGuard)
+        this.scene.targetSpeed = 0;
         this.scene.targetTurnRate = angularSpeedRps;
         break;
 
@@ -176,6 +182,32 @@ export class SimulatorManager {
         this.scene.targetSpeed = 0;
         this.scene.targetTurnRate = 0;
         break;
+    }
+  }
+
+  /**
+   * Combined forward/backward and steering arc control (e.g., holding W+D or S+A)
+   */
+  public steerCombined(linear: number, turn: number) {
+    if (linear > 0 && this.safetyStopActive) {
+      linear = 0;
+    }
+    if (linear < 0) {
+      this.safetyStopActive = false;
+    }
+    this.scene.targetSpeed = linear;
+    this.scene.targetTurnRate = turn;
+
+    if (linear > 0.05 && Math.abs(turn) < 0.2) {
+      this.currentMovement = 'FORWARD';
+    } else if (linear < -0.05 && Math.abs(turn) < 0.2) {
+      this.currentMovement = 'BACKWARD';
+    } else if (turn < -0.2 && Math.abs(linear) < 0.05) {
+      this.currentMovement = 'LEFT';
+    } else if (turn > 0.2 && Math.abs(linear) < 0.05) {
+      this.currentMovement = 'RIGHT';
+    } else if (Math.abs(linear) <= 0.05 && Math.abs(turn) <= 0.05) {
+      this.currentMovement = 'STOP';
     }
   }
 
@@ -281,11 +313,16 @@ export class SimulatorManager {
     // 1. Genuine 3D Ultrasonic Raycast Measurements
     const ultrasonic = this.scene.computeUltrasonicDistances();
 
+    // Auto-clear safety stop when forward corridor clears (>= 32 cm)
+    if (this.safetyStopActive && ultrasonic.centerCm >= 32) {
+      this.safetyStopActive = false;
+    }
+
     // 2. Kinematic & Collision Step
     const { safetyStop, blocked } = this.scene.updateKinematics(deltaSec, ultrasonic.centerCm);
-    if (blocked) {
+    if (blocked && this.currentMovement === 'FORWARD') {
       this.currentMovement = 'STOP';
-      this.addLog('NAV', 'Path blocked: Robot cannot drive through crop rows or solid obstacles.');
+      this.addLog('NAV', 'Forward path blocked: Steer left/right or reverse to maneuver.');
     }
     if (safetyStop && !this.safetyStopActive) {
       this.safetyStopActive = true;
@@ -493,10 +530,15 @@ export class SimulatorManager {
 
       // Step 3: Turn toward diseased crop row
       this.demoTimer = window.setTimeout(() => {
-        this.scene.robotX = -3.2;
+        this.scene.robotX = -3.0;
         this.scene.robotZ = -1.2;
         this.scene.robotHeading = -Math.PI / 2;
+        this.scene.prevRobotX = -3.0;
+        this.scene.prevRobotZ = -1.2;
         this.move('STOP');
+        const target = this.scene.getDetectedPlantInFront();
+        this.detectedPlant = target;
+        this.scene.updateTargetReticle(target);
         this.addLog('DETECTION', 'Full Demo Step 3: Camera focused on Plant #003. Disease verified: Early Blight.');
 
         // Step 4: Ready for farmer approval prompt
