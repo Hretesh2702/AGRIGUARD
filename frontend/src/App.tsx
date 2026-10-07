@@ -6,7 +6,6 @@ import { DiagnosisCard } from './components/DiagnosisCard';
 import { TelemetryCard } from './components/TelemetryCard';
 import { TreatmentCard } from './components/TreatmentCard';
 import { RobotControls } from './components/RobotControls';
-import { FieldHeatmap } from './components/FieldHeatmap';
 import { DiagnosticsPage } from './pages/DiagnosticsPage';
 import { SidebarHero } from './components/SidebarHero';
 import { ConnectPanel } from './components/ConnectPanel';
@@ -22,7 +21,7 @@ import {
 
 export const App: React.FC = () => {
   const { telemetry, wsConnected } = useTelemetry();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'remote' | 'diagnostics' | 'heatmap'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'remote' | 'diagnostics'>('dashboard');
   const [activeZoneId, setActiveZoneId] = useState<string>('ZONE-R1C1');
 
   const [lastDetection, setLastDetection] = useState<AIDetection | null>(null);
@@ -150,51 +149,11 @@ export const App: React.FC = () => {
                 />
               </div>
             </div>
-
-            {/* LIVE DIGITAL TWIN */}
-            <AgriGuardTwin telemetry={telemetry} />
-
-            {/* Bottom Row: Environmental & Soil Telemetry */}
-            <TelemetryCard telemetry={telemetry} />
           </div>
         )}
 
         {activeTab === 'diagnostics' && (
           <DiagnosticsPage />
-        )}
-
-        {activeTab === 'heatmap' && (
-          <div className="field-map-cockpit-layout">
-            {/* Left Column: Interactive Field Pathology Heatmap */}
-            <div className="field-map-primary-column">
-              <FieldHeatmap
-                activeZoneId={telemetry?.active_zone_id ?? activeZoneId}
-                onZoneSelected={(zid) => setActiveZoneId(zid)}
-              />
-            </div>
-
-            {/* Right Column: Live Camera Feed & Robot Mobility Controls Side-by-Side */}
-            <div className="field-map-side-column">
-              <CameraView
-                cameraStatus={telemetry?.camera_status}
-                lastDetection={lastDetection}
-                isScanning={isScanning}
-                onTriggerScan={handleTriggerScan}
-                activeZoneId={telemetry?.active_zone_id ?? activeZoneId}
-                telemetry={telemetry}
-                onMove={handleMove}
-                onStop={handleStop}
-              />
-
-              <RobotControls
-                telemetry={telemetry}
-                onMove={handleMove}
-                onStop={handleStop}
-                onEmergencyStop={handleEmergencyStop}
-                onSprayApprove={handleApproveTreatment}
-              />
-            </div>
-          </div>
         )}
       </main>
       </div>
