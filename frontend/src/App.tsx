@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { useTelemetry } from './hooks/useTelemetry';
-import { Header } from './components/Header';
+import { TopBar } from './components/TopBar';
+import { SidebarNav } from './components/SidebarNav';
 import { CameraView } from './components/CameraView';
-import { DiagnosisCard } from './components/DiagnosisCard';
 import { TelemetryCard } from './components/TelemetryCard';
-import { TreatmentCard } from './components/TreatmentCard';
 import { RobotControls } from './components/RobotControls';
-import { FieldHeatmap } from './components/FieldHeatmap';
 import { DiagnosticsPage } from './pages/DiagnosticsPage';
-import { SidebarHero } from './components/SidebarHero';
+import { SensorsPage } from './pages/SensorsPage';
+import { DeviceHealthPage } from './pages/DeviceHealthPage';
+import { SystemLogsPage } from './pages/SystemLogsPage';
 import { ConnectPanel } from './components/ConnectPanel';
 import { AgriGuardTwin } from './digitalTwin/AgriGuardTwin';
 import { AIDetection, TreatmentDecision } from './types';
@@ -19,18 +19,45 @@ import {
   sendRobotStop,
   sendEmergencyStop
 } from './services/api';
+import {
+  Cpu,
+  Activity,
+  Camera,
+  Leaf,
+  ShieldCheck,
+  Radio,
+  Map,
+  Gamepad2,
+  Zap,
+  AlertTriangle,
+  ShieldAlert,
+  Droplets
+} from 'lucide-react';
 
+// ─── Page meta ─────────────────────────────────────────────────────────────
+type TabId = 'dashboard' | 'remote' | 'diagnostics' | 'heatmap' | 'sensors' | 'devices' | 'logs';
+
+const PAGE_META: Record<TabId, { title: string; section: string }> = {
+  dashboard:   { title: 'Dashboard',           section: 'Overview' },
+  heatmap:     { title: 'Field Monitor',        section: 'Field Operations' },
+  remote:      { title: 'Robot Control',        section: 'Field Operations' },
+  sensors:     { title: 'Sensors',              section: 'Hardware' },
+  devices:     { title: 'Device Health',        section: 'Hardware' },
+  diagnostics: { title: 'Hardware Diagnostics', section: 'System' },
+  logs:        { title: 'System Logs',          section: 'System' },
+};
+
+// ─── App ────────────────────────────────────────────────────────────────────
 export const App: React.FC = () => {
   const { telemetry, wsConnected } = useTelemetry();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'remote' | 'diagnostics' | 'heatmap'>('dashboard');
+  const [activeTab, setActiveTab] = useState<TabId>('dashboard');
   const [activeZoneId, setActiveZoneId] = useState<string>('ZONE-R1C1');
-
   const [lastDetection, setLastDetection] = useState<AIDetection | null>(null);
   const [lastDecision, setLastDecision] = useState<TreatmentDecision | null>(null);
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [scanNotification, setScanNotification] = useState<string | null>(null);
 
-  // Trigger Real AI Camera Scan
+  // AI Scan
   const handleTriggerScan = async (frameBase64?: string) => {
     setIsScanning(true);
     setScanNotification(null);
@@ -46,135 +73,245 @@ export const App: React.FC = () => {
     }
   };
 
-  // Farmer Approval Action
+  // Treatment approval
   const handleApproveTreatment = async (decisionId: string, approved: boolean, operatorName: string) => {
     const res = await approveTreatment(decisionId, approved, operatorName);
     if (lastDecision) {
       setLastDecision({
         ...lastDecision,
-        approved: approved,
+        approved,
         status: approved ? 'FARMER_APPROVED_EXECUTED' : 'REJECTED_BY_FARMER'
       });
     }
     return res;
   };
 
-  // Robot Directional Commands
-  const handleMove = async (direction: string, speed: number, durationMs: number = 0) => {
-    return await sendRobotMove(direction, speed, durationMs);
-  };
+  // Robot commands
+  const handleMove = async (direction: string, speed: number, durationMs: number = 0) =>
+    sendRobotMove(direction, speed, durationMs);
+  const handleStop = async () => sendRobotStop();
+  const handleEmergencyStop = async () => sendEmergencyStop();
 
-  const handleStop = async () => {
-    return await sendRobotStop();
-  };
-
-  const handleEmergencyStop = async () => {
-    return await sendEmergencyStop();
-  };
+  const { title, section } = PAGE_META[activeTab];
+  const esp32Connected = telemetry?.esp32_connected ?? false;
+  const isSimulation = telemetry?.hardware_mode === 'SIMULATION' || telemetry?.mode === 'SIMULATION';
+  const isEStopActive = telemetry?.safety?.emergency_stop ?? false;
+  const batteryPct = telemetry?.battery_percentage ?? null;
+  const soilPct = typeof telemetry?.soil_moisture === 'number'
+    ? telemetry.soil_moisture
+    : (telemetry?.soil_moisture as any)?.moisture_pct ?? null;
+  const tempC = telemetry?.dht22?.temperature ?? telemetry?.environment?.temperature_c ?? null;
+  const humidity = telemetry?.dht22?.humidity ?? telemetry?.environment?.humidity_pct ?? null;
+  const robotStatus = isSimulation ? 'Simulation' : esp32Connected ? 'Connected' : 'Disconnected';
 
   return (
-    <div style={{ maxWidth: '1780px', margin: '0 auto', padding: '1rem' }}>
-      {/* Workspace with Left Sidebar */}
-      <div className="dashboard-with-sidebar">
-        {/* Left Sidebar */}
-        <aside className="dashboard-sidebar">
-          {/* Header Console (Brand, E-Stop, Navigation Tabs & Status Pills) */}
-          <Header
-            telemetry={telemetry}
-            wsConnected={wsConnected}
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
-            onEmergencyStop={handleEmergencyStop}
-          />
+    <div className="app-shell">
+      {/* ── Left Sidebar ── */}
+      <SidebarNav
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        telemetry={telemetry}
+        wsConnected={wsConnected}
+      />
 
-          {/* Sidebar Hero Section */}
-          <SidebarHero />
-        </aside>
+      {/* ── Main Area ── */}
+      <div className="main-area">
+        {/* Top Bar */}
+        <TopBar
+          pageTitle={title}
+          pageSection={section}
+          telemetry={telemetry}
+          wsConnected={wsConnected}
+          onEmergencyStop={handleEmergencyStop}
+        />
 
-        {/* Main Tab Content */}
-        <main className="dashboard-main-content">
-        {activeTab === 'dashboard' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-            
-            {/* Scan Notification Banner */}
-            {scanNotification && (
-              <div style={{
-                padding: '0.65rem 1rem',
-                borderRadius: '8px',
-                background: scanNotification.includes('error') ? 'rgba(244, 63, 94, 0.15)' : 'rgba(16, 185, 129, 0.15)',
-                border: `1px solid ${scanNotification.includes('error') ? 'var(--rose-500)' : 'var(--emerald-500)'}`,
-                color: '#fff',
-                fontSize: '0.85rem'
-              }}>
-                {scanNotification}
+        {/* Page Content */}
+        <div className="page-content">
+
+          {/* Scan notification banner */}
+          {scanNotification && (
+            <div className={`notification-banner ${scanNotification.includes('error') ? 'error' : 'success'}`}>
+              {scanNotification.includes('error')
+                ? <AlertTriangle size={15} />
+                : <ShieldCheck size={15} />}
+              <span>{scanNotification}</span>
+              <button
+                onClick={() => setScanNotification(null)}
+                className="btn btn-ghost"
+                style={{ marginLeft: 'auto', padding: '2px 6px', fontSize: '0.75rem' }}
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {/* E-Stop active warning */}
+          {isEStopActive && (
+            <div className="estop-banner">
+              <ShieldAlert size={18} />
+              <div>
+                <strong>EMERGENCY STOP ACTIVE</strong>
+                <div style={{ fontSize: '0.76rem', fontWeight: 500, opacity: 0.85, marginTop: '2px' }}>
+                  All motor PWM and chemical pump actuation are hardware locked. Clear the interlock to resume.
+                </div>
               </div>
-            )}
+            </div>
+          )}
 
-            {/* Hardware Robot Connectivity (Wi-Fi & Bluetooth) */}
-            <ConnectPanel telemetry={telemetry} />
+          {/* ━━━ DASHBOARD ━━━ */}
+          {activeTab === 'dashboard' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
 
-            {/* LIVE DIGITAL TWIN */}
-            <AgriGuardTwin telemetry={telemetry} />
+              {/* KPI Summary Row */}
+              <div className="grid-4">
+                <div className="stat-card">
+                  <div className="stat-label">Robot Status</div>
+                  <div className="stat-value" style={{
+                    fontSize: '1.15rem',
+                    color: isSimulation ? 'var(--info)' : esp32Connected ? 'var(--green-700)' : 'var(--danger)'
+                  }}>
+                    {robotStatus}
+                  </div>
+                  <div className="stat-meta">
+                    {isSimulation ? 'Safe test sandbox' : esp32Connected ? '4WD chassis active' : 'Waiting for ESP32'}
+                  </div>
+                </div>
 
-            {/* Dashboard Primary Section: Robot Sensor Status Only */}
-            <section style={{ width: '100%' }}>
+                <div className="stat-card">
+                  <div className="stat-label">AI System</div>
+                  <div className="stat-value" style={{ fontSize: '1.15rem', color: 'var(--green-700)' }}>
+                    Ready
+                  </div>
+                  <div className="stat-meta">
+                    {lastDetection
+                      ? `Last: ${lastDetection.display_name}`
+                      : 'Awaiting scan'}
+                  </div>
+                </div>
+
+                <div className="stat-card">
+                  <div className="stat-label">Soil Moisture</div>
+                  <div className="stat-value">
+                    {soilPct !== null ? `${soilPct.toFixed(0)}%` : '--'}
+                  </div>
+                  <div className="stat-meta">
+                    {soilPct === null ? 'Sensor offline'
+                      : soilPct >= 70 ? 'WET — reduce irrigation'
+                      : soilPct >= 40 ? 'NORMAL — optimal range'
+                      : 'DRY — irrigation recommended'}
+                  </div>
+                </div>
+
+                <div className="stat-card">
+                  <div className="stat-label">Battery</div>
+                  <div className="stat-value" style={{
+                    color: batteryPct !== null && batteryPct < 20 ? 'var(--danger)'
+                      : batteryPct !== null && batteryPct < 50 ? 'var(--warning)' : 'var(--text-primary)'
+                  }}>
+                    {batteryPct !== null ? `${batteryPct}%` : '--'}
+                  </div>
+                  <div className="stat-meta">
+                    {batteryPct !== null
+                      ? (batteryPct < 20 ? 'Low — charge soon' : batteryPct < 50 ? 'Moderate' : 'Healthy')
+                      : 'Not reported'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick environment strip */}
+              {(tempC !== null || humidity !== null) && (
+                <div className="card" style={{ padding: '12px 20px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '24px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      Environment
+                    </span>
+                    {tempC !== null && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Temperature</span>
+                        <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-primary)' }}>{tempC.toFixed(1)}°C</span>
+                      </div>
+                    )}
+                    {humidity !== null && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Humidity</span>
+                        <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-primary)' }}>{humidity.toFixed(0)}%</span>
+                      </div>
+                    )}
+                    {telemetry?.active_zone_id && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Active Zone</span>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--green-700)', fontFamily: 'monospace' }}>{telemetry.active_zone_id}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Hardware Connection Panel */}
+              <ConnectPanel telemetry={telemetry} />
+
+              {/* Live Digital Twin */}
+              <AgriGuardTwin telemetry={telemetry} />
+
+              {/* Sensor Telemetry */}
               <TelemetryCard telemetry={telemetry} />
-            </section>
-          </div>
-        )}
-
-        {activeTab === 'remote' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%' }}>
-            {/* Top Row: Camera & Direction Pad Side-by-Side Cockpit */}
-            <div className="remote-cockpit-layout">
-              <div className="remote-cockpit-camera">
-                <CameraView
-                  cameraStatus={telemetry?.camera_status}
-                  lastDetection={lastDetection}
-                  isScanning={isScanning}
-                  onTriggerScan={handleTriggerScan}
-                  activeZoneId={telemetry?.active_zone_id ?? activeZoneId}
-                  telemetry={telemetry}
-                  onMove={handleMove}
-                  onStop={handleStop}
-                />
-              </div>
-
-              <div className="remote-cockpit-controls">
-                <RobotControls
-                  telemetry={telemetry}
-                  onMove={handleMove}
-                  onStop={handleStop}
-                  onEmergencyStop={handleEmergencyStop}
-                  onSprayApprove={handleApproveTreatment}
-                />
-              </div>
             </div>
+          )}
 
-            {/* LIVE DIGITAL TWIN */}
-            <AgriGuardTwin telemetry={telemetry} />
-
-            {/* Bottom Row: Environmental & Soil Telemetry */}
-            <TelemetryCard telemetry={telemetry} />
-          </div>
-        )}
-
-        {activeTab === 'diagnostics' && (
-          <DiagnosticsPage />
-        )}
-
-        {activeTab === 'heatmap' && (
-          <div className="field-map-cockpit-layout">
-            {/* Left Column: Interactive Field Pathology Heatmap */}
-            <div className="field-map-primary-column">
-              <FieldHeatmap
-                activeZoneId={telemetry?.active_zone_id ?? activeZoneId}
-                onZoneSelected={(zid) => setActiveZoneId(zid)}
-              />
+          {/* ━━━ ROBOT CONTROL (Remote) ━━━ */}
+          {activeTab === 'remote' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div className="remote-cockpit-layout">
+                <div className="remote-cockpit-camera">
+                  <CameraView
+                    cameraStatus={telemetry?.camera_status}
+                    lastDetection={lastDetection}
+                    isScanning={isScanning}
+                    onTriggerScan={handleTriggerScan}
+                    activeZoneId={telemetry?.active_zone_id ?? activeZoneId}
+                    telemetry={telemetry}
+                    onMove={handleMove}
+                    onStop={handleStop}
+                  />
+                </div>
+                <div className="remote-cockpit-controls">
+                  <RobotControls
+                    telemetry={telemetry}
+                    onMove={handleMove}
+                    onStop={handleStop}
+                    onEmergencyStop={handleEmergencyStop}
+                    onSprayApprove={handleApproveTreatment}
+                  />
+                </div>
+              </div>
+              <AgriGuardTwin telemetry={telemetry} />
+              <TelemetryCard telemetry={telemetry} />
             </div>
+          )}
 
-            {/* Right Column: Live Camera Feed & Robot Mobility Controls Side-by-Side */}
-            <div className="field-map-side-column">
+          {/* ━━━ HARDWARE DIAGNOSTICS ━━━ */}
+          {activeTab === 'diagnostics' && (
+            <DiagnosticsPage />
+          )}
+
+          {/* ━━━ SENSORS ━━━ */}
+          {activeTab === 'sensors' && (
+            <SensorsPage telemetry={telemetry} />
+          )}
+
+          {/* ━━━ DEVICES ━━━ */}
+          {activeTab === 'devices' && (
+            <DeviceHealthPage />
+          )}
+
+          {/* ━━━ LOGS ━━━ */}
+          {activeTab === 'logs' && (
+            <SystemLogsPage />
+          )}
+
+          {/* ━━━ FIELD MONITOR (Camera) ━━━ */}
+          {activeTab === 'heatmap' && (
+            <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <CameraView
                 cameraStatus={telemetry?.camera_status}
                 lastDetection={lastDetection}
@@ -185,18 +322,10 @@ export const App: React.FC = () => {
                 onMove={handleMove}
                 onStop={handleStop}
               />
-
-              <RobotControls
-                telemetry={telemetry}
-                onMove={handleMove}
-                onStop={handleStop}
-                onEmergencyStop={handleEmergencyStop}
-                onSprayApprove={handleApproveTreatment}
-              />
             </div>
-          </div>
-        )}
-      </main>
+          )}
+
+        </div>
       </div>
     </div>
   );

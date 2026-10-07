@@ -58,6 +58,7 @@ export const CameraView: React.FC<CameraViewProps> = React.memo(({
   const [showReticle, setShowReticle] = useState(true);
   const [showDebugMetrics, setShowDebugMetrics] = useState(false);
   const [autoScan, setAutoScan] = useState(false);
+  const [cameraSource, setCameraSource] = useState<'system'|'usb'>('system');
 
   // Performance metrics (updated only once per second for zero frame-by-frame UI re-renders)
   const [cameraFps, setCameraFps] = useState<number>(0);
@@ -112,6 +113,15 @@ export const CameraView: React.FC<CameraViewProps> = React.memo(({
       streamRef.current = null;
     }
 
+    if (cameraSource === 'usb') {
+      console.log('USB Camera selected. Reclaiming backend capture lock and using fallback stream.');
+      await reclaimCamera().catch(() => {});
+      setStreamTimestamp(Date.now());
+      setStreamMode('fallback');
+      isStartingRef.current = false;
+      return;
+    }
+
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       console.warn('getUserMedia not supported in this browser, falling back to MJPEG stream.');
       await reclaimCamera().catch(() => {});
@@ -125,68 +135,12 @@ export const CameraView: React.FC<CameraViewProps> = React.memo(({
       // Step 1: Yield backend OpenCV lock so Windows DirectShow does not block browser access
       await releaseCamera().catch(() => {});
 
-      // Step 2: Target 120 FPS camera capture with progressive fallback cascade
-      // Prioritize high framerate and low latency over high resolution for live preview
+      // Simplify constraints to just ask for ideal resolution. 
+      // Do not force frame rates, as it often breaks Windows webcams.
       const candidateProfiles: MediaStreamConstraints[] = [
-        // Priority 1: 120 FPS @ 720p (Ideal)
-        {
-          video: {
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            frameRate: { ideal: 120, min: 60 }
-          },
-          audio: false
-        },
-        // Priority 2: 120 FPS @ 480p (FPS & low-latency prioritized over resolution)
-        {
-          video: {
-            width: { ideal: 640 },
-            height: { ideal: 480 },
-            frameRate: { ideal: 120 }
-          },
-          audio: false
-        },
-        // Priority 3: 90 FPS @ 480p
-        {
-          video: {
-            width: { ideal: 640 },
-            height: { ideal: 480 },
-            frameRate: { ideal: 90 }
-          },
-          audio: false
-        },
-        // Priority 4: 60 FPS @ 720p
-        {
-          video: {
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            frameRate: { ideal: 60 }
-          },
-          audio: false
-        },
-        // Priority 5: 60 FPS @ 480p
-        {
-          video: {
-            width: { ideal: 640 },
-            height: { ideal: 480 },
-            frameRate: { ideal: 60 }
-          },
-          audio: false
-        },
-        // Priority 6: 30 FPS @ 720p / 1080p
-        {
-          video: {
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            frameRate: { ideal: 30 }
-          },
-          audio: false
-        },
-        // Priority 7: Default camera stream
-        {
-          video: true,
-          audio: false
-        }
+        { video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+        { video: { width: { ideal: 640 }, height: { ideal: 480 } }, audio: false },
+        { video: true, audio: false }
       ];
 
       let mediaStream: MediaStream | null = null;
@@ -207,50 +161,17 @@ export const CameraView: React.FC<CameraViewProps> = React.memo(({
 
       streamRef.current = mediaStream;
 
-      // Step 3: Inspect hardware capabilities & settings via MediaStreamTrack
+      // Ensure resolution is updated for UI
       const videoTrack = mediaStream.getVideoTracks()[0];
       if (videoTrack) {
-        const capabilities: any = typeof videoTrack.getCapabilities === 'function' ? videoTrack.getCapabilities() : {};
         const settings = videoTrack.getSettings();
-
-        console.log('[AgriGuard Camera] Hardware Capabilities:', capabilities);
-        console.log('[AgriGuard Camera] Initial Negotiated Settings:', settings);
-
-        // Hardware max frameRate from capabilities
-        let maxHardwareFps = 30;
-        if (capabilities.frameRate && capabilities.frameRate.max) {
-          maxHardwareFps = Math.round(capabilities.frameRate.max);
-        }
-
-        // Apply highest supported frame rate via applyConstraints without restarting the stream
-        const targetRates = [120, 90, 60, 30];
-        for (const targetRate of targetRates) {
-          if (maxHardwareFps >= targetRate || !capabilities.frameRate) {
-            try {
-              await videoTrack.applyConstraints({
-                frameRate: { ideal: targetRate }
-              });
-              break;
-            } catch (err) {
-              console.warn(`applyConstraints(${targetRate} FPS) notice:`, err);
-            }
-          }
-        }
-
-        const finalSettings = videoTrack.getSettings();
-        const activeW = finalSettings.width || settings.width || 640;
-        const activeH = finalSettings.height || settings.height || 480;
-        setResolution(`${activeW}x${activeH}`);
-
-        const capText = capabilities.frameRate
-          ? `${capabilities.frameRate.max} FPS max (${capabilities.width?.max || activeW}x${capabilities.height?.max || activeH})`
-          : 'UVC Hardware (30-60 FPS)';
-        setHardwareCapability(capText);
+        setResolution(`${settings.width || 640}x${settings.height || 480}`);
+        setHardwareCapability(`Webcam (${settings.width || 640}x${settings.height || 480})`);
 
         videoTrack.onended = () => {
           console.warn('[AgriGuard Camera] Video track ended. Reconnecting...');
           setStreamMode('error');
-          setErrorMessage('Camera disconnected from optical bus.');
+          setErrorMessage('System Camera disconnected.');
         };
       }
 
@@ -289,7 +210,7 @@ export const CameraView: React.FC<CameraViewProps> = React.memo(({
     } finally {
       isStartingRef.current = false;
     }
-  }, [onVideoFrameCallback]);
+  }, [onVideoFrameCallback, cameraSource]);
 
   // Clean shutdown of camera streams
   const stopDirectCamera = useCallback(() => {
@@ -303,10 +224,14 @@ export const CameraView: React.FC<CameraViewProps> = React.memo(({
     setStreamMode('off');
   }, []);
 
-  // Initialize camera stream once on mount or power-on
+  // Initialize camera stream once on mount, power-on, or source change
   useEffect(() => {
     if (isEnabled) {
-      startDirectCamera();
+      // Small delay helps ensure previous tracks are fully stopped before restarting
+      const timer = setTimeout(() => {
+        startDirectCamera();
+      }, 100);
+      return () => clearTimeout(timer);
     } else {
       stopDirectCamera();
     }
@@ -318,7 +243,7 @@ export const CameraView: React.FC<CameraViewProps> = React.memo(({
         streamRef.current = null;
       }
     };
-  }, [isEnabled, startDirectCamera, stopDirectCamera]);
+  }, [isEnabled, cameraSource, startDirectCamera, stopDirectCamera]);
 
   // Ensure persistent video element always attaches to streamRef if available
   useEffect(() => {
@@ -438,21 +363,35 @@ export const CameraView: React.FC<CameraViewProps> = React.memo(({
   const currentZone = activeZoneId || telemetry?.active_zone_id || 'ZONE-R1C1';
 
   return (
-    <div className="glass-panel" style={{ padding: '1.25rem', height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div className="card" style={{ padding: '1.25rem', height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Header with Title and Controls */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <Camera size={20} color={isEnabled ? 'var(--emerald-400)' : 'var(--text-muted)'} />
           <div>
-            <h2 style={{ fontSize: '1.1rem', fontWeight: 700, letterSpacing: '-0.01em' }}>
-              Real USB Optical Cockpit
-            </h2>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <h2 style={{ fontSize: '1.1rem', fontWeight: 700, letterSpacing: '-0.01em', margin: 0, color: 'var(--text-primary)' }}>
+                Field Monitor Camera
+              </h2>
+              <select 
+                className="input" 
+                value={cameraSource}
+                style={{ padding: '0.15rem 0.5rem', fontSize: '0.75rem', height: 'auto', minHeight: '24px' }}
+                onChange={(e) => {
+                  stopDirectCamera();
+                  setCameraSource(e.target.value as 'system' | 'usb');
+                }}
+              >
+                <option value="system">System Camera</option>
+                <option value="usb">USB Camera</option>
+              </select>
+            </div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '4px' }}>
               <span>Primary Field Viewport</span>
               {isConnected && (
                 <>
                   <span>•</span>
-                  <span style={{ color: 'var(--emerald-400)', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                  <span style={{ color: 'var(--green-500)', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
                     <Zap size={11} /> {streamMode === 'direct' ? 'Hardware Direct (<15ms)' : 'Zero-Lag Stream'}
                   </span>
                 </>
