@@ -7,7 +7,6 @@ import { TelemetryCard } from './components/TelemetryCard';
 import { TreatmentCard } from './components/TreatmentCard';
 import { RobotControls } from './components/RobotControls';
 import { DiagnosticsPage } from './pages/DiagnosticsPage';
-import { SidebarHero } from './components/SidebarHero';
 import { ConnectPanel } from './components/ConnectPanel';
 import { AgriGuardTwin } from './digitalTwin/AgriGuardTwin';
 import { SimulatedViewPage } from './simulator/SimulatedViewPage';
@@ -86,9 +85,6 @@ export const App: React.FC = () => {
             setActiveTab={setActiveTab}
             onEmergencyStop={handleEmergencyStop}
           />
-
-          {/* Sidebar Hero Section */}
-          <SidebarHero />
         </aside>
 
         {/* Main Tab Content */}
