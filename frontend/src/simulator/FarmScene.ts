@@ -1,15 +1,17 @@
 /**
- * AgriGuard Simulator — Three.js 3D Farm Environment & Physics World
+ * AgriGuard Simulator — Three.js Realistic 3D Farm Environment & Digital Twin Physics
  *
  * Implements:
- * - Visually clean, stylized agricultural field with furrow soil rows, fence boundary, and crop plants
- * - Target crop plants with distinct states (HEALTHY, WARNING, DISEASED, TREATED)
- * - Authentic 3D AgriGuard Rover model with wheel animation
- * - Genuine 3-way Raycast Ultrasonic Sensor calculation (Left, Center, Right) against obstacles & crops
- * - Physical collision detection & Center Obstacle Hard-Stop
- * - Virtual camera target plant acquisition
+ * - Large Realistic Working Agricultural Field (6 long crop rows, furrow mounds, drip lines, stakes)
+ * - Botanical Low-Poly Tomato Crop Bushes (stems, compound leaves, tomato fruits, healthy/warning/diseased/treated states)
+ * - Non-drivable Crop Boundaries & Solid Collision System (Rover cannot drive through crops)
+ * - Correct Cardinal Coordinates & Heading (North = -Z, East = +X, South = +Z, West = -X)
+ * - Corrected Steering Kinematics (Left turns counter-clockwise towards West, Right turns clockwise towards East)
+ * - Genuine 3-way Raycast Ultrasonic Sensor calculation terminating at true obstacle distances
+ * - 3D Volumetric Sensor Beams (Left Amber, Center Green, Right Red) with floating in-scene distance tags
+ * - Dedicated Secondary FPV Bumper Camera rendering to a live canvas thumbnail
+ * - Scenic Farm Environment: Water tank, greenhouse, distant trees, perimeter fence, rocks & crates
  * - Localized precision spray mist particle physics
- * - Multiple camera perspectives: Chase (Follow), Overhead, Isometric, and Bumper (FPV)
  */
 
 import * as THREE from 'three';
@@ -28,68 +30,89 @@ export interface RaycastSensorDistances {
 
 export class FarmScene {
   private container: HTMLElement;
-  private scene: THREE.Scene;
-  private camera: THREE.PerspectiveCamera;
-  private renderer: THREE.WebGLRenderer;
-  private controls: OrbitControls;
-  private robotRefs: RobotModelRefs;
+  public scene: THREE.Scene;
+  public camera: THREE.PerspectiveCamera;
+  public renderer: THREE.WebGLRenderer;
+  public controls: OrbitControls;
+  public robotRefs: RobotModelRefs;
   private animFrameId: number | null = null;
   private isDestroyed = false;
 
-  // Farm Dimensions (in meters)
-  public readonly fieldWidth = 14.0;  // X: -7 to +7
-  public readonly fieldLength = 18.0; // Z: -9 to +9
+  // Secondary FPV Bumper Camera (renders live thumbnail)
+  public bumperCamera: THREE.PerspectiveCamera;
+  private bumperCanvas: HTMLCanvasElement | null = null;
+  private bumperRenderer: THREE.WebGLRenderer | null = null;
 
-  // Plant & Obstacle collections
-  private plants: FarmPlant[] = [];
-  private plantMeshes = new Map<string, THREE.Group>();
+  // Large Farm Dimensions (in meters)
+  public readonly fieldWidth = 26.0;  // X: -13m to +13m
+  public readonly fieldLength = 40.0; // Z: -20m to +20m
+
+  // Collections
+  public plants: FarmPlant[] = [];
+  private plantGroups: Map<string, THREE.Group> = new Map();
   private obstacles: ObstacleObject[] = [];
-  private obstacleMeshes: THREE.Mesh[] = [];
+  private obstacleMeshes: THREE.Object3D[] = [];
   private raycastTargets: THREE.Object3D[] = [];
 
-  // Robot Kinematics (One Source of Truth)
+  // Collision Boundaries
+  private colliders: { x: number; z: number; radius: number }[] = [];
+
+  // Robot Kinematics (Physical 4-Wheel Rover Simulation)
+  // Coordinates: Heading 0 rad = North (along -Z).
+  // +X is East (Right), -X is West (Left), +Z is South (Backward), -Z is North (Forward)
   public robotX = 0.0;
-  public robotZ = -6.5;
-  public robotHeading = 0.0; // radians (0 = facing +Z forward)
+  public robotZ = 2.0;       // Started in center driving lane between Row 3 & 4
+  public robotHeading = 0.0; // radians (0 = facing North along -Z)
   public robotSpeed = 0.0;   // m/s
   public targetSpeed = 0.0;
   public turnRate = 0.0;     // rad/s
   public targetTurnRate = 0.0;
-  public wheelAngle = 0.0;
+  public wheelAngleLeft = 0.0;
+  public wheelAngleRight = 0.0;
 
   // Camera Management
   private cameraMode: SimCameraMode = 'CHASE';
-  private bumperCamGroup: THREE.Group;
+  public followRobot = true;
 
-  // Ultrasonic Visual Rays
-  private centerRayMesh: THREE.Line;
-  private leftRayMesh: THREE.Line;
-  private rightRayMesh: THREE.Line;
+  // Raycasting & Ultrasonic Radar Beams
   private raycaster = new THREE.Raycaster();
+  private centerBeamMesh!: THREE.Mesh;
+  private leftBeamMesh!: THREE.Mesh;
+  private rightBeamMesh!: THREE.Mesh;
+  private centerTagSprite!: THREE.Sprite;
+  private leftTagSprite!: THREE.Sprite;
+  private rightTagSprite!: THREE.Sprite;
 
-  // Localized Spray Particle System
+  // Targeted Spray Particle Mist
+  private sprayParticles!: THREE.Points;
+  private sprayPositions!: Float32Array;
+  private sprayVelocities!: Float32Array;
   private sprayActive = false;
-  private sprayParticles: THREE.Points;
-  private sprayPositions: Float32Array;
-  private sprayVelocities: Float32Array;
-  private sprayTargetPos = new THREE.Vector3(0, 0, 0);
+  private sprayTargetPos = new THREE.Vector3();
 
-  // Timing
-  private lastTime = performance.now();
+  // Cached Botanical Materials
+  private healthyLeafMat!: THREE.MeshStandardMaterial;
+  private warningLeafMat!: THREE.MeshStandardMaterial;
+  private diseasedLeafMat!: THREE.MeshStandardMaterial;
+  private treatedLeafMat!: THREE.MeshStandardMaterial;
+  private stemMat!: THREE.MeshStandardMaterial;
+  private redTomatoMat!: THREE.MeshStandardMaterial;
+  private greenTomatoMat!: THREE.MeshStandardMaterial;
 
   constructor(container: HTMLElement) {
     this.container = container;
 
     // 1. Scene
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x0a101d);
-    this.scene.fog = new THREE.FogExp2(0x0a101d, 0.035);
+    this.scene.background = new THREE.Color(0x87ceeb); // Natural clear sky blue
+    this.scene.fog = new THREE.FogExp2(0xd6e6f2, 0.016); // Soft atmospheric farm haze
 
-    // 2. Camera
+    // 2. Main Simulation Perspective Camera
     const width = container.clientWidth || 800;
     const height = container.clientHeight || 500;
-    this.camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 100);
-    this.camera.position.set(0, 5, -12);
+    this.camera = new THREE.PerspectiveCamera(48, width / height, 0.2, 160);
+    // Elevated 3rd-person perspective behind robot looking down the rows (matches reference image)
+    this.camera.position.set(0, 4.8, 9.5);
 
     // 3. WebGL Renderer
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -97,384 +120,566 @@ export class FarmScene {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.15;
     container.appendChild(this.renderer.domElement);
 
-    // 4. OrbitControls
+    // 4. Secondary FPV Bumper Camera (Mounted on robot front)
+    this.bumperCamera = new THREE.PerspectiveCamera(65, 16 / 9, 0.1, 40);
+    this.bumperCamera.position.set(0, 1.25, -0.6);
+    this.bumperCamera.lookAt(0, 0.8, -5.0);
+
+    // 5. OrbitControls
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
-    this.controls.maxPolarAngle = Math.PI / 2 - 0.02; // do not clip through soil
-    this.controls.minDistance = 1.5;
-    this.controls.maxDistance = 35.0;
+    this.controls.maxPolarAngle = Math.PI / 2 - 0.04; // Don't clip below ground
+    this.controls.minDistance = 2.0;
+    this.controls.maxDistance = 55.0;
+    this.controls.target.set(this.robotX, 1.0, this.robotZ - 4.0);
 
-    // 5. Environmental Lighting
+    // 6. Setup Botanical Materials
+    this.setupMaterials();
+
+    // 7. Lighting & Environment
     this.setupLighting();
 
-    // 6. Build Farm Terrain & Fences
-    this.setupFarmTerrain();
+    // 8. Large Agricultural Ground, Furrows & Scenery
+    this.setupTerrainAndScenery();
 
-    // 7. Spawn Crops & Obstacles
+    // 9. Structured Row-based Tomato Plants & Obstacles
     this.setupCropsAndObstacles();
 
-    // 8. Add Authentic AgriGuard 3D Robot
+    // 10. Authentic AgriGuard Robot Model
     this.robotRefs = createAgriGuardRobot();
     this.scene.add(this.robotRefs.rootGroup);
 
-    // Setup Bumper Inspection Camera Rig
-    this.bumperCamGroup = new THREE.Group();
-    this.bumperCamGroup.position.set(0, 1.4, 0.8);
-    this.robotRefs.chassisGroup.add(this.bumperCamGroup);
+    // Attach bumper camera rig to robot
+    this.robotRefs.rootGroup.add(this.bumperCamera);
 
-    // 9. Ultrasonic Sensor Beams Visualizer
-    this.setupUltrasonicRayVisualizers();
+    // 11. Ultrasonic 3D Radar Cones & In-Scene Floating Tags
+    this.setupUltrasonicRadarCones();
 
-    // 10. Localized Targeted Spray System
+    // 12. Localized Precision Spray Particle Mist
     this.setupSpraySystem();
 
-    // Update initial robot transform
+    // Initial transform sync
     this.syncRobotTransform();
 
-    // 11. Start 60fps Loop
+    // 13. 60 FPS Render Loop
     this.animate = this.animate.bind(this);
     this.animFrameId = requestAnimationFrame(this.animate);
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // Lighting & Agricultural Atmosphere
+  // Setup Botanical Materials
   // ───────────────────────────────────────────────────────────────────────────
-  private setupLighting() {
-    // Ambient natural daylight
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.75);
-    this.scene.add(ambientLight);
+  private setupMaterials() {
+    this.stemMat = new THREE.MeshStandardMaterial({
+      color: 0x3a5a2a,
+      roughness: 0.8,
+      metalness: 0.05,
+    });
 
-    // Warm Sun Directional Light
-    const sunLight = new THREE.DirectionalLight(0xfff7ed, 1.3);
-    sunLight.position.set(12, 18, 10);
-    sunLight.castShadow = true;
-    sunLight.shadow.mapSize.width = 1024;
-    sunLight.shadow.mapSize.height = 1024;
-    sunLight.shadow.camera.near = 0.5;
-    sunLight.shadow.camera.far = 45;
-    sunLight.shadow.camera.left = -12;
-    sunLight.shadow.camera.right = 12;
-    sunLight.shadow.camera.top = 12;
-    sunLight.shadow.camera.bottom = -12;
-    sunLight.shadow.bias = -0.0004;
-    this.scene.add(sunLight);
+    this.healthyLeafMat = new THREE.MeshStandardMaterial({
+      color: 0x2e7d32, // Lush vibrant tomato green
+      roughness: 0.65,
+      metalness: 0.05,
+      side: THREE.DoubleSide,
+    });
 
-    // Soft Green Crop Fill Light
-    const cropFill = new THREE.DirectionalLight(0x10b981, 0.35);
-    cropFill.position.set(-10, 8, -10);
-    this.scene.add(cropFill);
+    this.warningLeafMat = new THREE.MeshStandardMaterial({
+      color: 0xa18b28, // Early chlorosis yellow-olive
+      roughness: 0.75,
+      metalness: 0.05,
+      side: THREE.DoubleSide,
+    });
+
+    this.diseasedLeafMat = new THREE.MeshStandardMaterial({
+      color: 0x6d4323, // Early Blight dark necrotic brown lesions
+      roughness: 0.85,
+      metalness: 0.05,
+      side: THREE.DoubleSide,
+    });
+
+    this.treatedLeafMat = new THREE.MeshStandardMaterial({
+      color: 0x15803d, // Resilient treated green with slight foliar spray sheen
+      emissive: 0x065f46,
+      emissiveIntensity: 0.12,
+      roughness: 0.5,
+      metalness: 0.1,
+      side: THREE.DoubleSide,
+    });
+
+    this.redTomatoMat = new THREE.MeshStandardMaterial({
+      color: 0xdc2626, // Ripe red tomato
+      roughness: 0.28,
+      metalness: 0.05,
+    });
+
+    this.greenTomatoMat = new THREE.MeshStandardMaterial({
+      color: 0x65a30d, // Unripe green tomato
+      roughness: 0.35,
+      metalness: 0.05,
+    });
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // Farm Soil Terrain, Furrow Rows & Boundaries
+  // Outdoor Farm Lighting
   // ───────────────────────────────────────────────────────────────────────────
-  private setupFarmTerrain() {
-    // Main soil plane
-    const soilGeom = new THREE.PlaneGeometry(this.fieldWidth + 2, this.fieldLength + 2, 32, 32);
-    const soilMat = new THREE.MeshStandardMaterial({
-      color: 0x271912, // Rich dark agricultural earth
-      roughness: 0.95,
-      metalness: 0.05,
-    });
-    const soilPlane = new THREE.Mesh(soilGeom, soilMat);
-    soilPlane.rotation.x = -Math.PI / 2;
-    soilPlane.position.y = 0;
-    soilPlane.receiveShadow = true;
-    this.scene.add(soilPlane);
+  private setupLighting() {
+    // Ambient natural sky fill
+    const ambientLight = new THREE.AmbientLight(0xfff8ed, 0.75);
+    this.scene.add(ambientLight);
 
-    // Furrow soil mounds along crop rows
-    const furrowRowsX = [-4.5, -1.5, 1.5, 4.5];
-    const furrowMat = new THREE.MeshStandardMaterial({
-      color: 0x3d271d,
+    // Warm Sun Directional Light casting realistic farm shadows
+    const sunLight = new THREE.DirectionalLight(0xfffaea, 1.25);
+    sunLight.position.set(18, 30, 16);
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.width = 2048;
+    sunLight.shadow.mapSize.height = 2048;
+    sunLight.shadow.camera.near = 0.5;
+    sunLight.shadow.camera.far = 80;
+    sunLight.shadow.camera.left = -22;
+    sunLight.shadow.camera.right = 22;
+    sunLight.shadow.camera.top = 26;
+    sunLight.shadow.camera.bottom = -26;
+    sunLight.shadow.bias = -0.0006;
+    this.scene.add(sunLight);
+
+    // Soft sky hemisphere bounce
+    const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x4a3525, 0.45);
+    this.scene.add(hemiLight);
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Large Agricultural Ground, Furrows, Irrigation, & Farm Scenery
+  // ───────────────────────────────────────────────────────────────────────────
+  private setupTerrainAndScenery() {
+    // 1. Base Soil Plane (Tilled agricultural brown earth)
+    const groundGeom = new THREE.PlaneGeometry(this.fieldWidth + 12, this.fieldLength + 12, 32, 32);
+    const groundMat = new THREE.MeshStandardMaterial({
+      color: 0x422f20, // Natural dark farm soil
+      roughness: 0.95,
+      metalness: 0.02,
+    });
+    const ground = new THREE.Mesh(groundGeom, groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    this.scene.add(ground);
+
+    // 2. Compacted Tractor Driving Furrow Tracks in Open Corridors
+    const laneXCoordinates = [-6.0, -3.0, 0.0, 3.0, 6.0];
+    const trackMat = new THREE.MeshStandardMaterial({
+      color: 0x332316,
       roughness: 0.9,
     });
 
-    furrowRowsX.forEach((rx) => {
-      const moundGeom = new THREE.BoxGeometry(0.85, 0.08, this.fieldLength * 0.92);
-      const mound = new THREE.Mesh(moundGeom, furrowMat);
-      mound.position.set(rx, 0.04, 0);
-      mound.receiveShadow = true;
-      this.scene.add(mound);
+    laneXCoordinates.forEach((lx) => {
+      const trackGeom = new THREE.PlaneGeometry(1.6, this.fieldLength * 0.92);
+      const track = new THREE.Mesh(trackGeom, trackMat);
+      track.rotation.x = -Math.PI / 2;
+      track.position.set(lx, 0.003, 0);
+      track.receiveShadow = true;
+      this.scene.add(track);
     });
 
-    // Rover driving lane guide tracks (subtle compacted soil)
-    const trackMat = new THREE.MeshBasicMaterial({ color: 0x1f140e });
-    const lanesX = [-3.0, 0.0, 3.0];
-    lanesX.forEach((lx) => {
-      const laneGeom = new THREE.PlaneGeometry(1.2, this.fieldLength * 0.9);
-      const lane = new THREE.Mesh(laneGeom, trackMat);
-      lane.rotation.x = -Math.PI / 2;
-      lane.position.set(lx, 0.002, 0);
-      this.scene.add(lane);
+    // 3. Raised Earthen Furrow Soil Berms (Mounded ridges under each of the 6 rows)
+    const rowXCoordinates = [-7.5, -4.5, -1.5, 1.5, 4.5, 7.5];
+    const bermMat = new THREE.MeshStandardMaterial({
+      color: 0x3b2819,
+      roughness: 0.95,
     });
 
-    // Boundary Wooden Fence Posts & Perimeter Collision Rails
-    const fencePostMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.85 });
-    const postGeom = new THREE.CylinderGeometry(0.06, 0.06, 1.1, 10);
+    const dripTubeMat = new THREE.MeshStandardMaterial({
+      color: 0x1e293b, // Dark polyethylene black drip tape
+      roughness: 0.6,
+    });
 
-    const halfW = this.fieldWidth / 2;
-    const halfL = this.fieldLength / 2;
+    const stakeMat = new THREE.MeshStandardMaterial({
+      color: 0x6b4f36, // Weathered wood trellis stake
+      roughness: 0.85,
+    });
 
-    // Spawn fence perimeter
-    const perimeterPosts: [number, number][] = [];
-    for (let x = -halfW; x <= halfW; x += 2.5) {
-      perimeterPosts.push([x, halfL]);
-      perimeterPosts.push([x, -halfL]);
+    rowXCoordinates.forEach((rx) => {
+      // Raised furrow ridge
+      const ridgeGeom = new THREE.BoxGeometry(0.85, 0.14, 32.0);
+      const ridge = new THREE.Mesh(ridgeGeom, bermMat);
+      ridge.position.set(rx, 0.07, 0);
+      ridge.receiveShadow = true;
+      this.scene.add(ridge);
+
+      // Black Drip Irrigation Line resting on ridge alongside crop roots
+      const tubeGeom = new THREE.CylinderGeometry(0.016, 0.016, 32.0, 8);
+      const tube = new THREE.Mesh(tubeGeom, dripTubeMat);
+      tube.rotation.x = Math.PI / 2;
+      tube.position.set(rx + 0.28, 0.15, 0);
+      this.scene.add(tube);
+
+      // Wooden Trellis Stakes spaced along the row
+      for (let z = -15; z <= 15; z += 5) {
+        const stakeGeom = new THREE.CylinderGeometry(0.035, 0.035, 1.6, 8);
+        const stake = new THREE.Mesh(stakeGeom, stakeMat);
+        stake.position.set(rx, 0.8, z);
+        stake.castShadow = true;
+        this.scene.add(stake);
+        this.raycastTargets.push(stake);
+        this.colliders.push({ x: rx, z, radius: 0.35 });
+      }
+    });
+
+    // 4. Perimeter Wooden Ranch Fence
+    const fenceMat = new THREE.MeshStandardMaterial({ color: 0x6d4c31, roughness: 0.85 });
+    const postGeom = new THREE.CylinderGeometry(0.07, 0.07, 1.25, 8);
+
+    const halfW = this.fieldWidth / 2 + 1.5;
+    const halfL = this.fieldLength / 2 + 1.5;
+
+    // Boundary Fence Posts
+    for (let x = -halfW; x <= halfW; x += 3.5) {
+      [-halfL, halfL].forEach((z) => {
+        const post = new THREE.Mesh(postGeom, fenceMat);
+        post.position.set(x, 0.62, z);
+        post.castShadow = true;
+        this.scene.add(post);
+        this.raycastTargets.push(post);
+        this.colliders.push({ x, z, radius: 0.5 });
+      });
     }
-    for (let z = -halfL; z <= halfL; z += 2.5) {
-      perimeterPosts.push([halfW, z]);
-      perimeterPosts.push([-halfW, z]);
+
+    for (let z = -halfL; z <= halfL; z += 3.5) {
+      [-halfW, halfW].forEach((x) => {
+        const post = new THREE.Mesh(postGeom, fenceMat);
+        post.position.set(x, 0.62, z);
+        post.castShadow = true;
+        this.scene.add(post);
+        this.raycastTargets.push(post);
+        this.colliders.push({ x, z, radius: 0.5 });
+      });
     }
 
-    perimeterPosts.forEach(([px, pz]) => {
-      const post = new THREE.Mesh(postGeom, fencePostMat);
-      post.position.set(px, 0.55, pz);
-      post.castShadow = true;
-      this.scene.add(post);
-      this.raycastTargets.push(post);
+    // 5. Authentic Farm Scenery: Agricultural Water Tank on Concrete Pad (as shown in reference image left)
+    const padGeom = new THREE.BoxGeometry(2.2, 0.25, 2.2);
+    const padMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.8 });
+    const pad = new THREE.Mesh(padGeom, padMat);
+    pad.position.set(-11.5, 0.12, -12.0);
+    pad.receiveShadow = true;
+    this.scene.add(pad);
+
+    const tankGeom = new THREE.CylinderGeometry(0.9, 0.9, 2.2, 20);
+    const tankMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4 });
+    const tank = new THREE.Mesh(tankGeom, tankMat);
+    tank.position.set(-11.5, 1.35, -12.0);
+    tank.castShadow = true;
+    this.scene.add(tank);
+    this.raycastTargets.push(tank);
+    this.colliders.push({ x: -11.5, z: -12.0, radius: 1.3 });
+
+    // 6. Hoop Tunnel Polyhouse / Greenhouse (as shown in reference image right background)
+    const ghGroup = new THREE.Group();
+    ghGroup.position.set(9.5, 0, -18.5);
+
+    const hoopMat = new THREE.MeshStandardMaterial({
+      color: 0xf8fafc,
+      transparent: true,
+      opacity: 0.55,
+      roughness: 0.3,
+      side: THREE.DoubleSide,
     });
 
-    // Horizontal fence rail bars
-    const railMat = new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.8 });
-    const createRail = (w: number, l: number, x: number, z: number) => {
-      const rGeom = new THREE.BoxGeometry(w, 0.05, l);
-      const rail = new THREE.Mesh(rGeom, railMat);
-      rail.position.set(x, 0.75, z);
-      this.scene.add(rail);
-      this.raycastTargets.push(rail);
-    };
+    const tunnelGeom = new THREE.CylinderGeometry(2.0, 2.0, 7.0, 16, 1, true, 0, Math.PI);
+    const tunnel = new THREE.Mesh(tunnelGeom, hoopMat);
+    tunnel.rotation.x = Math.PI / 2;
+    tunnel.rotation.z = Math.PI / 2;
+    tunnel.position.set(0, 0, 0);
+    ghGroup.add(tunnel);
 
-    createRail(this.fieldWidth, 0.05, 0, halfL);
-    createRail(this.fieldWidth, 0.05, 0, -halfL);
-    createRail(0.05, this.fieldLength, halfW, 0);
-    createRail(0.05, this.fieldLength, -halfW, 0);
+    this.scene.add(ghGroup);
+    this.colliders.push({ x: 9.5, z: -18.5, radius: 2.5 });
+
+    // 7. Distant Windbreak Trees along Horizon
+    const foliageMat = new THREE.MeshStandardMaterial({ color: 0x1b4332, roughness: 0.8 });
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3728, roughness: 0.9 });
+
+    for (let x = -24; x <= 24; x += 4.5) {
+      const tree = new THREE.Group();
+      const trH = 1.6 + Math.random() * 0.8;
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.22, trH, 8), trunkMat);
+      trunk.position.y = trH / 2;
+      tree.add(trunk);
+
+      const folR = 1.4 + Math.random() * 0.6;
+      const fol = new THREE.Mesh(new THREE.DodecahedronGeometry(folR, 1), foliageMat);
+      fol.position.y = trH + folR * 0.85;
+      tree.add(fol);
+
+      tree.position.set(x + (Math.random() - 0.5) * 1.5, 0, -25.0);
+      this.scene.add(tree);
+    }
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // Crops & Physical Obstacles Setup
+  // Structured Row-Based Tomato Crop Bushes & Obstacles
   // ───────────────────────────────────────────────────────────────────────────
   private setupCropsAndObstacles() {
-    // 1. Target Crop Plants Population (4 Rows x 6 Plants = 24 Plants)
-    const rows = [-4.5, -1.5, 1.5, 4.5];
-    const zSpacing = 2.4;
-    const zStart = -6.0;
+    // 6 Long Rows: X = [-7.5, -4.5, -1.5, 1.5, 4.5, 7.5]
+    // 17 plants per row from Z = -16.0 to Z = +16.0 (2.0m spacing)
+    // Total: 102 individual structured plants with explicit world coordinates
+    const rowXCoords = [-7.5, -4.5, -1.5, 1.5, 4.5, 7.5];
+    const zSpacing = 2.0;
+    const zStart = -16.0;
+    const plantsPerRow = 17;
 
-    let plantIndex = 1;
+    let plantCounter = 1;
 
-    rows.forEach((rx, rIdx) => {
-      for (let cIdx = 0; cIdx < 6; cIdx++) {
-        const pz = zStart + cIdx * zSpacing;
-        const id = `PLANT-#${String(plantIndex).padStart(3, '0')}`;
+    rowXCoords.forEach((rx, rowIdx) => {
+      for (let colIdx = 0; colIdx < plantsPerRow; colIdx++) {
+        const pz = zStart + colIdx * zSpacing;
+        const id = `PLANT-#${String(plantCounter).padStart(3, '0')}`;
 
-        // Designate specific sample plant health conditions for demo
+        // Specific disease targets positioned along robot's path
         let state: PlantHealthState = 'HEALTHY';
-        let healthScore = 92;
+        let healthScore = 91 + Math.floor(Math.random() * 7);
         let diseaseInfo = undefined;
 
-        if (id === 'PLANT-#003') {
-          // Primary Diseased Target (Row 1, near center approach)
+        // Target plant in Row 3 near starting corridor (matching reference image pathology)
+        if (rx === -1.5 && pz === 0.0) {
           state = 'DISEASED';
-          healthScore = 58;
+          healthScore = 41;
           diseaseInfo = {
-            name: 'Early Blight (Alternaria solani)',
-            pathogen: 'Fungal Necrosis',
-            confidence: 0.94,
-            symptoms: 'Target-like concentric brown foliar spots, margin chlorosis, stem lesions',
+            name: 'Early Blight',
+            pathogen: 'Alternaria solani',
+            confidence: 0.924,
+            symptoms: 'Concentric brown foliar lesion rings with chlorotic yellow halo',
             recommendedTreatment: 'Targeted Copper Hydroxide (2.5 g/L) micro-pulse fungicide',
             chemicalProduct: 'Kocide 3000 / Copper Hydroxide',
-            recommendedDoseMl: 42,
+            recommendedDoseMl: 40,
             inventoryAvailable: true,
           };
-        } else if (id === 'PLANT-#011') {
-          // Warning Target (Row 2)
+        } else if (rx === -1.5 && pz === 2.0) {
+          // Warning state plant adjacent to diseased target
           state = 'WARNING';
-          healthScore = 74;
+          healthScore = 68;
           diseaseInfo = {
-            name: 'Initial Septoria Leaf Spot',
+            name: 'Initial Foliar Chlorosis',
+            pathogen: 'Nutrient Deficiency / Early Pathogen',
+            confidence: 0.76,
+            symptoms: 'Mild interveinal yellowing on lower leaves',
+            recommendedTreatment: 'Micro-nutrient foliar spray with bio-fungicide booster',
+            chemicalProduct: 'Zinc-Manganese Chelate',
+            recommendedDoseMl: 30,
+            inventoryAvailable: true,
+          };
+        } else if (rx === 1.5 && pz === -6.0) {
+          // Another diseased target in Row 4
+          state = 'DISEASED';
+          healthScore = 48;
+          diseaseInfo = {
+            name: 'Septoria Leaf Spot',
             pathogen: 'Septoria lycopersici',
-            confidence: 0.78,
-            symptoms: 'Circular water-soaked chlorotic spots on lower leaves',
-            recommendedTreatment: 'Preventative bio-fungicide Bacillus subtilis foliar mist',
+            confidence: 0.88,
+            symptoms: 'Small circular spots with dark brown margins and gray centers',
+            recommendedTreatment: 'Bio-fungicide Bacillus subtilis foliar spray',
             chemicalProduct: 'Serenade ASO',
             recommendedDoseMl: 35,
-            inventoryAvailable: true,
-          };
-        } else if (id === 'PLANT-#016') {
-          // Another diseased plant in Row 3
-          state = 'DISEASED';
-          healthScore = 52;
-          diseaseInfo = {
-            name: 'Tomato Yellow Leaf Curl',
-            pathogen: 'Begomovirus',
-            confidence: 0.89,
-            symptoms: 'Upward leaf curling, severe stunting, interveinal chlorosis',
-            recommendedTreatment: 'Localized azadirachtin insecticidal soap application',
-            chemicalProduct: 'EcoNeem Organic',
-            recommendedDoseMl: 40,
             inventoryAvailable: true,
           };
         }
 
         const plant: FarmPlant = {
           id,
-          row: rIdx + 1,
-          col: cIdx + 1,
+          row: rowIdx + 1,
+          col: colIdx + 1,
           position: { x: rx, z: pz },
           state,
-          cropType: 'Solanum lycopersicum',
-          variety: 'San Marzano Tomato',
+          cropType: 'Tomato',
+          variety: 'San Marzano Vine',
           healthScore,
           disease: diseaseInfo,
           treatmentHistory: [],
         };
 
         this.plants.push(plant);
-        this.createPlant3DMesh(plant);
-        plantIndex++;
+        this.createBotanicalCropMesh(plant);
+
+        // Solid non-drivable collision cylinder around every plant
+        this.colliders.push({ x: rx, z: pz, radius: 0.55 });
+        plantCounter++;
       }
     });
 
-    // 2. Physical Obstacles (Detectable by Ultrasonic & Solid Colliders)
-    const obstacleDefs: ObstacleObject[] = [
-      { id: 'OBS-ROCK-1', type: 'ROCK', position: { x: 0.0, y: 0.28, z: 2.5 }, radius: 0.42, height: 0.55 },
-      { id: 'OBS-CRATE-1', type: 'CRATE', position: { x: -3.0, y: 0.32, z: -1.0 }, radius: 0.48, height: 0.65 },
-      { id: 'OBS-IRRIG-1', type: 'IRRIGATION_BOX', position: { x: 3.0, y: 0.35, z: 4.8 }, radius: 0.38, height: 0.7 },
-      { id: 'OBS-ROCK-2', type: 'ROCK', position: { x: 0.0, y: 0.25, z: -4.0 }, radius: 0.38, height: 0.5 },
+    // Realistic Field Obstacles (Exactly matching the reference image):
+    // 1. Natural Granite Boulder sitting on right side of Center Lane (X: 0.9, Z: -2.0)
+    // 2. Plastic Harvesting Crate sitting in lane (X: 0.0, Z: 5.0)
+    // 3. Smaller rock obstacle
+    const fieldObstacles: ObstacleObject[] = [
+      { id: 'OBS-BOULDER-1', type: 'ROCK', position: { x: 0.92, y: 0.38, z: -2.2 }, radius: 0.48, height: 0.72 },
+      { id: 'OBS-CRATE-1', type: 'CRATE', position: { x: 0.0, y: 0.28, z: 6.5 }, radius: 0.42, height: 0.55 },
+      { id: 'OBS-BOULDER-2', type: 'ROCK', position: { x: -3.0, y: 0.32, z: -8.0 }, radius: 0.44, height: 0.65 },
+      { id: 'OBS-IRRIG-1', type: 'IRRIGATION_BOX', position: { x: 3.0, y: 0.35, z: 8.5 }, radius: 0.38, height: 0.7 },
     ];
 
-    obstacleDefs.forEach((obs) => {
+    fieldObstacles.forEach((obs) => {
       this.obstacles.push(obs);
       this.createObstacle3DMesh(obs);
+      this.colliders.push({ x: obs.position.x, z: obs.position.z, radius: obs.radius + 0.15 });
     });
   }
 
-  // Helper: Build a 3D Tomato Plant with Foliage & Fruit
-  private createPlant3DMesh(plant: FarmPlant) {
+  // ───────────────────────────────────────────────────────────────────────────
+  // Botanical Tomato Crop Geometry (NO Cartoon Balls / Spheres!)
+  // ───────────────────────────────────────────────────────────────────────────
+  private createBotanicalCropMesh(plant: FarmPlant) {
     const group = new THREE.Group();
     group.name = plant.id;
     group.position.set(plant.position.x, 0, plant.position.z);
 
-    // Stem
-    const stemGeom = new THREE.CylinderGeometry(0.025, 0.035, 0.85, 8);
-    const stemMat = new THREE.MeshStandardMaterial({ color: 0x2e7d32, roughness: 0.7 });
-    const stem = new THREE.Mesh(stemGeom, stemMat);
-    stem.position.y = 0.42;
+    // 1. Central Woody Stalk / Stem
+    const stemGeom = new THREE.CylinderGeometry(0.022, 0.038, 0.95, 8);
+    const stem = new THREE.Mesh(stemGeom, this.stemMat);
+    stem.position.y = 0.48;
     stem.castShadow = true;
     group.add(stem);
 
-    // Leaf Foliage Clusters (4 tiered leaf fan branches)
-    const leafMat = this.getPlantFoliageMaterial(plant.state);
+    // 2. Multi-Tiered Compound Leaflet Foliage (Botanical branching structure)
+    const leafMat = this.getFoliageMaterial(plant.state);
 
-    const leafLayers = [
-      { y: 0.35, scale: 0.7, rot: 0.2 },
-      { y: 0.55, scale: 0.9, rot: -0.5 },
-      { y: 0.72, scale: 0.8, rot: 0.8 },
-      { y: 0.88, scale: 0.55, rot: 0.1 },
+    // Create 4 natural lateral branches with pinnate compound leaflets
+    const branchConfigs = [
+      { y: 0.32, rotY: 0.3, len: 0.45, tilt: 0.35 },
+      { y: 0.48, rotY: 1.8, len: 0.52, tilt: 0.30 },
+      { y: 0.62, rotY: 3.4, len: 0.48, tilt: 0.25 },
+      { y: 0.76, rotY: 5.1, len: 0.40, tilt: 0.20 },
+      { y: 0.90, rotY: 1.0, len: 0.32, tilt: 0.12 }, // Top crown
     ];
 
-    leafLayers.forEach((layer) => {
-      const clusterGeom = new THREE.SphereGeometry(0.32 * layer.scale, 8, 8);
-      clusterGeom.scale(1.4, 0.6, 1.4);
-      const cluster = new THREE.Mesh(clusterGeom, leafMat);
-      cluster.position.y = layer.y;
-      cluster.rotation.y = layer.rot;
-      cluster.castShadow = true;
-      group.add(cluster);
+    branchConfigs.forEach((cfg) => {
+      const branchGroup = new THREE.Group();
+      branchGroup.position.set(0, cfg.y, 0);
+      branchGroup.rotation.y = cfg.rotY;
+      branchGroup.rotation.z = cfg.tilt;
+
+      // Slender branch twig
+      const twigGeom = new THREE.CylinderGeometry(0.008, 0.014, cfg.len, 6);
+      const twig = new THREE.Mesh(twigGeom, this.stemMat);
+      twig.position.set(cfg.len / 2, 0, 0);
+      twig.rotation.z = -Math.PI / 2;
+      branchGroup.add(twig);
+
+      // Serrated botanical leaf blades (compound leaflets arranged along twig)
+      const numLeaflets = 3;
+      for (let i = 0; i < numLeaflets; i++) {
+        const leafDist = (cfg.len / numLeaflets) * (i + 1);
+        const leafW = 0.14 * (1 - i * 0.15);
+        const leafL = 0.22 * (1 - i * 0.15);
+
+        // Elongated diamond leaf blade profile
+        const leafGeom = new THREE.PlaneGeometry(leafW, leafL, 2, 2);
+        // Add subtle natural organic curvature along leaf centerline
+        const pos = leafGeom.attributes.position;
+        pos.setZ(0, -0.02);
+        pos.setZ(1, 0.0);
+        pos.setZ(2, -0.02);
+        leafGeom.computeVertexNormals();
+
+        const leafMesh = new THREE.Mesh(leafGeom, leafMat);
+        leafMesh.position.set(leafDist, 0.02, (i % 2 === 0 ? 1 : -1) * 0.04);
+        leafMesh.rotation.x = Math.PI / 2 + (i % 2 === 0 ? 0.3 : -0.3);
+        leafMesh.rotation.y = (Math.random() - 0.5) * 0.4;
+        leafMesh.castShadow = true;
+        branchGroup.add(leafMesh);
+      }
+
+      group.add(branchGroup);
     });
 
-    // Tomato Fruit (Small red or green globes)
-    const fruitGeom = new THREE.SphereGeometry(0.065, 10, 10);
-    const fruitColor = plant.state === 'DISEASED' ? 0x991b1b : (plant.state === 'WARNING' ? 0xeab308 : 0xdc2626);
-    const fruitMat = new THREE.MeshStandardMaterial({ color: fruitColor, roughness: 0.25 });
-
-    const fruit1 = new THREE.Mesh(fruitGeom, fruitMat);
-    fruit1.position.set(0.12, 0.45, 0.1);
-    group.add(fruit1);
-
-    const fruit2 = new THREE.Mesh(fruitGeom, fruitMat);
-    fruit2.position.set(-0.1, 0.52, -0.08);
-    group.add(fruit2);
-
-    // Plant Label Beacon (Subtle health ring at base)
-    const ringGeom = new THREE.RingGeometry(0.35, 0.4, 16);
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: this.getPlantColorHex(plant.state),
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.45,
-    });
-    const ring = new THREE.Mesh(ringGeom, ringMat);
-    ring.rotation.x = -Math.PI / 2;
-    ring.position.y = 0.01;
-    group.add(ring);
-
-    // Invisible Raycast Cylinder
-    const colliderGeom = new THREE.CylinderGeometry(0.38, 0.38, 1.0, 8);
-    const colliderMat = new THREE.MeshBasicMaterial({ visible: false });
-    const collider = new THREE.Mesh(colliderGeom, colliderMat);
-    collider.position.y = 0.5;
-    collider.userData = { isPlant: true, plantId: plant.id };
-    group.add(collider);
+    // 3. Hanging Tomato Fruits (Subtle agricultural realism)
+    const numTomatoes = plant.state === 'DISEASED' ? 1 : 2;
+    for (let i = 0; i < numTomatoes; i++) {
+      const isRed = plant.state !== 'WARNING';
+      const fruitGeom = new THREE.SphereGeometry(0.048, 8, 8);
+      const fruitMesh = new THREE.Mesh(fruitGeom, isRed ? this.redTomatoMat : this.greenTomatoMat);
+      const ang = (i * 2.2) + Math.random();
+      fruitMesh.position.set(Math.cos(ang) * 0.14, 0.38 + i * 0.12, Math.sin(ang) * 0.14);
+      fruitMesh.castShadow = true;
+      group.add(fruitMesh);
+    }
 
     this.scene.add(group);
-    this.plantMeshes.set(plant.id, group);
-    this.raycastTargets.push(collider);
+    this.plantGroups.set(plant.id, group);
+    this.raycastTargets.push(stem);
   }
 
-  private getPlantColorHex(state: PlantHealthState): number {
+  private getFoliageMaterial(state: PlantHealthState): THREE.MeshStandardMaterial {
     switch (state) {
       case 'HEALTHY':
-        return 0x10b981; // Emerald
+        return this.healthyLeafMat;
       case 'WARNING':
-        return 0xf59e0b; // Amber
+        return this.warningLeafMat;
       case 'DISEASED':
-        return 0xf43f5e; // Crimson
+        return this.diseasedLeafMat;
       case 'TREATED':
-        return 0x06b6d4; // Cyan/Blue foliar treatment sheen
+        return this.treatedLeafMat;
     }
   }
 
-  private getPlantFoliageMaterial(state: PlantHealthState): THREE.MeshStandardMaterial {
-    switch (state) {
-      case 'HEALTHY':
-        return new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.6 });
-      case 'WARNING':
-        return new THREE.MeshStandardMaterial({ color: 0xca8a04, roughness: 0.7 });
-      case 'DISEASED':
-        return new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.8 });
-      case 'TREATED':
-        return new THREE.MeshStandardMaterial({
-          color: 0x0284c7, // Protective Copper/Biocide spray tint
-          emissive: 0x0891b2,
-          emissiveIntensity: 0.15,
-          roughness: 0.4,
-        });
+  public updatePlantState(plantId: string, newState: PlantHealthState) {
+    const plant = this.plants.find((p) => p.id === plantId);
+    if (!plant) return;
+
+    plant.state = newState;
+    const group = this.plantGroups.get(plantId);
+    if (group) {
+      const newMat = this.getFoliageMaterial(newState);
+      group.traverse((child) => {
+        const mesh = child as THREE.Mesh;
+        if (mesh.isMesh && mesh.geometry instanceof THREE.PlaneGeometry) {
+          mesh.material = newMat;
+        }
+      });
     }
   }
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // Physical Obstacle Meshes (Rock boulders, harvest crates, irrigation boxes)
+  // ───────────────────────────────────────────────────────────────────────────
   private createObstacle3DMesh(obs: ObstacleObject) {
     let mesh: THREE.Mesh;
     if (obs.type === 'ROCK') {
-      const geom = new THREE.DodecahedronGeometry(obs.radius, 1);
-      const mat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.9 });
+      // Natural textured granite boulder (as shown in reference image right of rover)
+      const geom = new THREE.DodecahedronGeometry(obs.radius, 2);
+      // Displace vertices to create authentic organic jagged rock facets
+      const pos = geom.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const vx = pos.getX(i);
+        const vy = pos.getY(i);
+        const vz = pos.getZ(i);
+        const noise = 1.0 + (Math.sin(vx * 7) * Math.cos(vz * 7)) * 0.14;
+        pos.setXYZ(i, vx * noise, vy * (noise * 0.85), vz * noise);
+      }
+      geom.computeVertexNormals();
+
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0x8b8578, // Rustic granite rock
+        roughness: 0.95,
+        metalness: 0.05,
+      });
       mesh = new THREE.Mesh(geom, mat);
     } else if (obs.type === 'CRATE') {
+      // Plastic harvest field crate
       const geom = new THREE.BoxGeometry(obs.radius * 2, obs.height, obs.radius * 2);
-      const mat = new THREE.MeshStandardMaterial({ color: 0xa16207, roughness: 0.85 });
+      const mat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.7 });
       mesh = new THREE.Mesh(geom, mat);
     } else {
       const geom = new THREE.CylinderGeometry(obs.radius, obs.radius, obs.height, 12);
-      const mat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.5, roughness: 0.5 });
+      const mat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.6 });
       mesh = new THREE.Mesh(geom, mat);
     }
 
     mesh.position.set(obs.position.x, obs.position.y, obs.position.z);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    mesh.userData = { isObstacle: true, obstacleId: obs.id };
+    mesh.userData = { isObstacle: true, id: obs.id };
 
     this.scene.add(mesh);
     this.obstacleMeshes.push(mesh);
@@ -482,66 +687,137 @@ export class FarmScene {
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // Ultrasonic Sensor Ray Visualizers
+  // Ultrasonic 3D Radar Cones & In-Scene Distance Tags
   // ───────────────────────────────────────────────────────────────────────────
-  private setupUltrasonicRayVisualizers() {
-    const createBeam = (color: number) => {
-      const geom = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(0, 0, 0),
-        new THREE.Vector3(0, 0, 2.5),
-      ]);
-      const mat = new THREE.LineBasicMaterial({ color, linewidth: 2, transparent: true, opacity: 0.65 });
-      return new THREE.Line(geom, mat);
+  private setupUltrasonicRadarCones() {
+    const createBeamMesh = (colorHex: number) => {
+      // Cone with apex at (0, 0, 0) pointing along -Z
+      const geom = new THREE.ConeGeometry(0.35, 1.0, 16, 1, true);
+      geom.translate(0, -0.5, 0);
+      geom.rotateX(Math.PI / 2); // Orient forward along -Z
+
+      const mat = new THREE.MeshBasicMaterial({
+        color: colorHex,
+        transparent: true,
+        opacity: 0.38,
+        wireframe: false,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+      const mesh = new THREE.Mesh(geom, mat);
+      this.scene.add(mesh);
+      return mesh;
     };
 
-    this.centerRayMesh = createBeam(0x10b981);
-    this.leftRayMesh = createBeam(0x10b981);
-    this.rightRayMesh = createBeam(0x10b981);
+    this.centerBeamMesh = createBeamMesh(0x10b981);
+    this.leftBeamMesh = createBeamMesh(0xf59e0b);
+    this.rightBeamMesh = createBeamMesh(0xf43f5e);
 
-    this.scene.add(this.centerRayMesh);
-    this.scene.add(this.leftRayMesh);
-    this.scene.add(this.rightRayMesh);
+    // Floating 3D In-Scene Distance Tags (Black badge with distance text)
+    this.centerTagSprite = this.createTagSprite('72 cm', '#10b981');
+    this.leftTagSprite = this.createTagSprite('48 cm', '#f59e0b');
+    this.rightTagSprite = this.createTagSprite('18 cm', '#f43f5e');
+
+    this.scene.add(this.centerTagSprite);
+    this.scene.add(this.leftTagSprite);
+    this.scene.add(this.rightTagSprite);
+  }
+
+  private createTagSprite(text: string, colorCss: string): THREE.Sprite {
+    const canvas = document.createElement('canvas');
+    canvas.width = 160;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d')!;
+
+    // Rounded badge background
+    ctx.fillStyle = 'rgba(11, 19, 32, 0.88)';
+    ctx.strokeStyle = colorCss;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.roundRect(8, 8, 144, 48, 10);
+    ctx.fill();
+    ctx.stroke();
+
+    // Text
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 24px JetBrains Mono, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, 80, 32);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    const mat = new THREE.SpriteMaterial({ map: texture, depthTest: false, transparent: true });
+    const sprite = new THREE.Sprite(mat);
+    sprite.scale.set(0.9, 0.36, 1.0);
+    return sprite;
+  }
+
+  private updateTagSprite(sprite: THREE.Sprite, text: string, colorCss: string) {
+    const canvas = (sprite.material.map as THREE.CanvasTexture).image as HTMLCanvasElement;
+    const ctx = canvas.getContext('2d')!;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = 'rgba(11, 19, 32, 0.90)';
+    ctx.strokeStyle = colorCss;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.roundRect(8, 8, 144, 48, 10);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 24px JetBrains Mono, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, 80, 32);
+
+    sprite.material.map!.needsUpdate = true;
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // Localized Targeted Spray System
+  // Targeted Precision Spray Particles
   // ───────────────────────────────────────────────────────────────────────────
   private setupSpraySystem() {
-    const count = 180;
-    const geom = new THREE.BufferGeometry();
+    const count = 160;
     this.sprayPositions = new Float32Array(count * 3);
     this.sprayVelocities = new Float32Array(count * 3);
 
     for (let i = 0; i < count; i++) {
       this.sprayPositions[i * 3 + 0] = 0;
-      this.sprayPositions[i * 3 + 1] = -100; // initially hidden off-screen
+      this.sprayPositions[i * 3 + 1] = -100;
       this.sprayPositions[i * 3 + 2] = 0;
     }
 
+    const geom = new THREE.BufferGeometry();
     geom.setAttribute('position', new THREE.BufferAttribute(this.sprayPositions, 3));
 
     const mat = new THREE.PointsMaterial({
       color: 0x38bdf8,
-      size: 0.065,
+      size: 0.055,
       transparent: true,
       opacity: 0.0,
       blending: THREE.AdditiveBlending,
-      depthWrite: false,
     });
 
     this.sprayParticles = new THREE.Points(geom, mat);
     this.scene.add(this.sprayParticles);
   }
 
-  public activateSpray(targetPlant: FarmPlant | null) {
+  public activateSpray(targetPlant: FarmPlant) {
     this.sprayActive = true;
-    (this.sprayParticles.material as THREE.PointsMaterial).opacity = 0.8;
-    if (targetPlant) {
-      this.sprayTargetPos.set(targetPlant.position.x, 0.5, targetPlant.position.z);
-    } else {
-      // Default spray under nozzle
-      const forward = new THREE.Vector3(Math.sin(this.robotHeading), 0, Math.cos(this.robotHeading));
-      this.sprayTargetPos.set(this.robotX + forward.x * 0.8, 0.4, this.robotZ + forward.z * 0.8);
+    this.sprayTargetPos.set(targetPlant.position.x, 0.45, targetPlant.position.z);
+    (this.sprayParticles.material as THREE.PointsMaterial).opacity = 0.85;
+
+    const count = this.sprayPositions.length / 3;
+    for (let i = 0; i < count; i++) {
+      this.sprayPositions[i * 3 + 0] = this.robotX;
+      this.sprayPositions[i * 3 + 1] = 1.0;
+      this.sprayPositions[i * 3 + 2] = this.robotZ;
+
+      const toTarget = this.sprayTargetPos.clone().sub(new THREE.Vector3(this.robotX, 1.0, this.robotZ)).normalize();
+      this.sprayVelocities[i * 3 + 0] = toTarget.x * 2.8 + (Math.random() - 0.5) * 0.4;
+      this.sprayVelocities[i * 3 + 1] = -0.8 - Math.random() * 0.6;
+      this.sprayVelocities[i * 3 + 2] = toTarget.z * 2.8 + (Math.random() - 0.5) * 0.4;
     }
   }
 
@@ -551,104 +827,251 @@ export class FarmScene {
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // Raycast Distance Calculation (Genuine 3D Ray Intersections)
+  // Genuine 3-Way Ultrasonic Raycast Distance Calculation
   // ───────────────────────────────────────────────────────────────────────────
   public computeUltrasonicDistances(): RaycastSensorDistances {
-    const originY = 1.42; // Height of ultrasonic sensors mounted on horizontal PVC rails
+    const originY = 1.42; // Sensor mounting height on PVC rails
+    const maxRangeMeters = 3.0;
 
-    // Robot Heading Direction Vector (Forward = +Z in local coordinates)
-    const forwardX = Math.sin(this.robotHeading);
-    const forwardZ = Math.cos(this.robotHeading);
+    // Robot Heading Direction (Heading 0 = North along -Z)
+    // Forward Vector f = (sin(theta), 0, -cos(theta))
+    const fwdX = Math.sin(this.robotHeading);
+    const fwdZ = -Math.cos(this.robotHeading);
 
-    // 1. Center Ray: Forward along robot heading
-    const centerOrigin = new THREE.Vector3(
-      this.robotX + forwardX * 1.40,
-      originY,
-      this.robotZ + forwardZ * 1.40
-    );
-    const centerDir = new THREE.Vector3(forwardX, 0, forwardZ).normalize();
+    // Left Vector = 90 deg counter-clockwise from fwd = (-cos(theta), 0, -sin(theta))
+    const leftDirX = -Math.cos(this.robotHeading);
+    const leftDirZ = -Math.sin(this.robotHeading);
 
-    // 2. Left Ray: Facing 90° Left (-X in local frame)
-    const leftDir = new THREE.Vector3(-forwardZ, 0, forwardX).normalize();
-    const leftOrigin = new THREE.Vector3(
-      this.robotX + leftDir.x * 1.10,
-      originY,
-      this.robotZ + leftDir.z * 1.10
-    );
+    // Right Vector = 90 deg clockwise from fwd = (cos(theta), 0, sin(theta))
+    const rightDirX = Math.cos(this.robotHeading);
+    const rightDirZ = Math.sin(this.robotHeading);
 
-    // 3. Right Ray: Facing 90° Right (+X in local frame)
-    const rightDir = new THREE.Vector3(forwardZ, 0, -forwardX).normalize();
-    const rightOrigin = new THREE.Vector3(
-      this.robotX + rightDir.x * 1.10,
-      originY,
-      this.robotZ + rightDir.z * 1.10
-    );
+    // Sensor Mount Origins on Rover
+    const centerOrigin = new THREE.Vector3(this.robotX + fwdX * 1.35, originY, this.robotZ + fwdZ * 1.35);
+    const leftOrigin = new THREE.Vector3(this.robotX + leftDirX * 1.05, originY, this.robotZ + leftDirZ * 1.05);
+    const rightOrigin = new THREE.Vector3(this.robotX + rightDirX * 1.05, originY, this.robotZ + rightDirZ * 1.05);
 
-    const maxRangeMeters = 2.5;
+    const centerDir = new THREE.Vector3(fwdX, 0, fwdZ).normalize();
+    const leftDir = new THREE.Vector3(leftDirX, 0, leftDirZ).normalize();
+    const rightDir = new THREE.Vector3(rightDirX, 0, rightDirZ).normalize();
 
-    const measureRay = (origin: THREE.Vector3, dir: THREE.Vector3, lineMesh: THREE.Line): number => {
+    const measureRay = (origin: THREE.Vector3, dir: THREE.Vector3): number => {
       this.raycaster.set(origin, dir);
       this.raycaster.near = 0.05;
       this.raycaster.far = maxRangeMeters;
 
       const hits = this.raycaster.intersectObjects(this.raycastTargets, true);
-      let distMeters = maxRangeMeters;
-
       if (hits.length > 0 && hits[0].distance < maxRangeMeters) {
-        distMeters = hits[0].distance;
+        return hits[0].distance;
       }
-
-      // Update line visualization in 3D
-      const hitEnd = origin.clone().add(dir.clone().multiplyScalar(distMeters));
-      const posAttr = lineMesh.geometry.attributes.position as THREE.BufferAttribute;
-      posAttr.setXYZ(0, origin.x, origin.y, origin.z);
-      posAttr.setXYZ(1, hitEnd.x, hitEnd.y, hitEnd.z);
-      posAttr.needsUpdate = true;
-
-      // Color code line by distance
-      const distCm = Math.round(distMeters * 100);
-      const mat = lineMesh.material as THREE.LineBasicMaterial;
-      if (distCm < SAFETY_THRESHOLDS.OBSTACLE_CM) {
-        mat.color.setHex(0xf43f5e); // Crimson Obstacle
-      } else if (distCm <= SAFETY_THRESHOLDS.WARNING_CM) {
-        mat.color.setHex(0xf59e0b); // Amber Warning
-      } else {
-        mat.color.setHex(0x10b981); // Emerald Safe
-      }
-
-      return distCm;
+      return maxRangeMeters;
     };
 
-    const centerCm = measureRay(centerOrigin, centerDir, this.centerRayMesh);
-    const leftCm = measureRay(leftOrigin, leftDir, this.leftRayMesh);
-    const rightCm = measureRay(rightOrigin, rightDir, this.rightRayMesh);
+    const centerDistM = measureRay(centerOrigin, centerDir);
+    const leftDistM = measureRay(leftOrigin, leftDir);
+    const rightDistM = measureRay(rightOrigin, rightDir);
+
+    const centerCm = Math.max(8, Math.round(centerDistM * 100));
+    const leftCm = Math.max(8, Math.round(leftDistM * 100));
+    const rightCm = Math.max(8, Math.round(rightDistM * 100));
+
+    // Update 3D Visual Radar Cones & Tags
+    this.updateRadarCone(this.centerBeamMesh, this.centerTagSprite, centerOrigin, centerDir, centerDistM, centerCm);
+    this.updateRadarCone(this.leftBeamMesh, this.leftTagSprite, leftOrigin, leftDir, leftDistM, leftCm);
+    this.updateRadarCone(this.rightBeamMesh, this.rightTagSprite, rightOrigin, rightDir, rightDistM, rightCm);
 
     return { centerCm, leftCm, rightCm };
   }
 
+  private updateRadarCone(
+    cone: THREE.Mesh,
+    tag: THREE.Sprite,
+    origin: THREE.Vector3,
+    dir: THREE.Vector3,
+    distMeters: number,
+    distCm: number
+  ) {
+    // 1. Position and scale cone so its apex is at sensor origin and height equals distance
+    cone.position.copy(origin);
+
+    // Look in raycast direction
+    const target = origin.clone().add(dir);
+    cone.lookAt(target);
+
+    // Scale cone along Z (height) and radial expansion
+    const beamRadiusScale = Math.max(0.4, distMeters * 0.45);
+    cone.scale.set(beamRadiusScale, beamRadiusScale, distMeters);
+
+    // Color code based on obstacle safety thresholds
+    let colorHex = 0x10b981; // Safe Green (> 60 cm)
+    let colorCss = '#10b981';
+    if (distCm < SAFETY_THRESHOLDS.OBSTACLE_CM) {
+      colorHex = 0xf43f5e; // Obstacle Red (< 25 cm)
+      colorCss = '#f43f5e';
+    } else if (distCm <= SAFETY_THRESHOLDS.WARNING_CM) {
+      colorHex = 0xf59e0b; // Warning Amber (25 - 60 cm)
+      colorCss = '#f59e0b';
+    }
+
+    (cone.material as THREE.MeshBasicMaterial).color.setHex(colorHex);
+
+    // 2. Position floating distance tag midway along the beam
+    const midPoint = origin.clone().add(dir.clone().multiplyScalar(distMeters * 0.55));
+    tag.position.set(midPoint.x, origin.y + 0.35, midPoint.z);
+    this.updateTagSprite(tag, `${distCm} cm`, colorCss);
+  }
+
   // ───────────────────────────────────────────────────────────────────────────
-  // Virtual Camera: Detect Nearest Plant in Front
+  // Non-Drivable Crop Boundaries & Collision Checking
+  // ───────────────────────────────────────────────────────────────────────────
+  public checkCollision(proposedX: number, proposedZ: number): boolean {
+    const robotRadius = 0.68; // Bounding radius of AgriGuard prototype rover
+
+    // 1. Field Boundary Collisions (Keep inside ranch fence)
+    const maxHalfW = this.fieldWidth / 2 - 0.9;
+    const maxHalfL = this.fieldLength / 2 - 0.9;
+    if (Math.abs(proposedX) > maxHalfW || Math.abs(proposedZ) > maxHalfL) {
+      return true; // Collided with field perimeter fence
+    }
+
+    // 2. Solid Obstacle and Crop Stalk Collisions (Never drive over crops)
+    for (const collider of this.colliders) {
+      const dx = proposedX - collider.x;
+      const dz = proposedZ - collider.z;
+      const minDist = robotRadius + collider.radius;
+      if (dx * dx + dz * dz < minDist * minDist) {
+        return true; // Path blocked by crop or obstacle
+      }
+    }
+
+    return false;
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Physics & Kinematic Step (Differential Drive Simulation)
+  // ───────────────────────────────────────────────────────────────────────────
+  public updateKinematics(deltaSec: number, centerUltrasonicCm: number): { safetyStop: boolean; blocked: boolean } {
+    let safetyStop = false;
+    let blocked = false;
+
+    // 1. Center Obstacle Safety Hard-Stop
+    if (centerUltrasonicCm < SAFETY_THRESHOLDS.OBSTACLE_CM && this.targetSpeed > 0) {
+      this.targetSpeed = 0;
+      safetyStop = true;
+    }
+
+    // 2. Smooth acceleration
+    this.robotSpeed = THREE.MathUtils.lerp(this.robotSpeed, this.targetSpeed, 0.16);
+    this.turnRate = THREE.MathUtils.lerp(this.turnRate, this.targetTurnRate, 0.16);
+
+    // 3. Differential Heading Integration
+    if (Math.abs(this.turnRate) > 0.001) {
+      this.robotHeading += this.turnRate * deltaSec;
+      // Wrap to 0..2PI
+      this.robotHeading = (this.robotHeading + Math.PI * 2) % (Math.PI * 2);
+    }
+
+    // 4. Proposed Position Step
+    if (Math.abs(this.robotSpeed) > 0.001) {
+      const moveDelta = this.robotSpeed * deltaSec;
+      // Heading 0 = North (along -Z)
+      const fwdX = Math.sin(this.robotHeading);
+      const fwdZ = -Math.cos(this.robotHeading);
+
+      const proposedX = this.robotX + fwdX * moveDelta;
+      const proposedZ = this.robotZ + fwdZ * moveDelta;
+
+      // Check Collision against crops, boundaries, and obstacles
+      if (this.checkCollision(proposedX, proposedZ)) {
+        // Block movement! Do NOT drive over plants!
+        this.robotSpeed = 0;
+        this.targetSpeed = 0;
+        blocked = true;
+      } else {
+        this.robotX = proposedX;
+        this.robotZ = proposedZ;
+
+        // Differential Wheel Rotation Animation
+        const wheelCircumference = Math.PI * 0.7; // ~0.35m radius wheels
+        const leftSpeed = this.robotSpeed - this.turnRate * 0.55;
+        const rightSpeed = this.robotSpeed + this.turnRate * 0.55;
+
+        this.wheelAngleLeft += (leftSpeed * deltaSec / wheelCircumference) * Math.PI * 2 * 3.5;
+        this.wheelAngleRight += (rightSpeed * deltaSec / wheelCircumference) * Math.PI * 2 * 3.5;
+
+        const { frontLeft, rearLeft, frontRight, rearRight } = this.robotRefs.wheels;
+        frontLeft.rotation.x = this.wheelAngleLeft;
+        rearLeft.rotation.x = this.wheelAngleLeft;
+        frontRight.rotation.x = this.wheelAngleRight;
+        rearRight.rotation.x = this.wheelAngleRight;
+      }
+    }
+
+    // Synchronize 3D Robot Model Transform
+    this.syncRobotTransform();
+
+    // Animate Spray mist if active
+    if (this.sprayActive) {
+      this.animateSprayMist(deltaSec);
+    }
+
+    return { safetyStop, blocked };
+  }
+
+  private syncRobotTransform() {
+    this.robotRefs.rootGroup.position.set(this.robotX, 0, this.robotZ);
+    // Orient model so its front faces along the heading direction
+    this.robotRefs.rootGroup.rotation.y = -this.robotHeading + Math.PI;
+    this.robotRefs.chassisGroup.rotation.set(0, 0, 0);
+  }
+
+  private animateSprayMist(delta: number) {
+    const pos = this.sprayPositions;
+    const vel = this.sprayVelocities;
+    const count = pos.length / 3;
+
+    for (let i = 0; i < count; i++) {
+      pos[i * 3 + 0] += vel[i * 3 + 0] * delta;
+      pos[i * 3 + 1] += vel[i * 3 + 1] * delta;
+      pos[i * 3 + 2] += vel[i * 3 + 2] * delta;
+
+      if (pos[i * 3 + 1] < 0.1) {
+        // Reset particle from nozzle
+        pos[i * 3 + 0] = this.robotX;
+        pos[i * 3 + 1] = 0.95;
+        pos[i * 3 + 2] = this.robotZ;
+
+        const toTarget = this.sprayTargetPos.clone().sub(new THREE.Vector3(this.robotX, 0.95, this.robotZ)).normalize();
+        vel[i * 3 + 0] = toTarget.x * 2.8 + (Math.random() - 0.5) * 0.35;
+        vel[i * 3 + 1] = -0.7 - Math.random() * 0.5;
+        vel[i * 3 + 2] = toTarget.z * 2.8 + (Math.random() - 0.5) * 0.35;
+      }
+    }
+    this.sprayParticles.geometry.attributes.position.needsUpdate = true;
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Inspection & Target Plant Acquisition
   // ───────────────────────────────────────────────────────────────────────────
   public getDetectedPlantInFront(): FarmPlant | null {
-    const forwardX = Math.sin(this.robotHeading);
-    const forwardZ = Math.cos(this.robotHeading);
-    const camPos = new THREE.Vector2(this.robotX + forwardX * 1.0, this.robotZ + forwardZ * 1.0);
+    const fwdX = Math.sin(this.robotHeading);
+    const fwdZ = -Math.cos(this.robotHeading);
+    const camPos = new THREE.Vector2(this.robotX + fwdX * 0.8, this.robotZ + fwdZ * 0.8);
 
     let nearestPlant: FarmPlant | null = null;
-    let minDistance = 1.85; // Maximum inspection view distance (meters)
+    let minDistance = 2.4; // Valid camera inspection acquisition radius (meters)
 
     for (const plant of this.plants) {
       const pPos = new THREE.Vector2(plant.position.x, plant.position.z);
-      const toPlant = pPos.clone().sub(camPos);
-      const dist = toPlant.length();
+      const dist = camPos.distanceTo(pPos);
 
       if (dist < minDistance) {
-        // Angle check: Must be within ±40° cone in front of camera
-        const toPlantDir = toPlant.normalize();
-        const fwdDir = new THREE.Vector2(forwardX, forwardZ).normalize();
-        const dot = toPlantDir.dot(fwdDir);
+        // Ensure plant is in the camera's forward field of view (dot product > 0.5)
+        const toPlant = pPos.clone().sub(camPos).normalize();
+        const fwdVec = new THREE.Vector2(fwdX, fwdZ).normalize();
+        const dot = fwdVec.dot(toPlant);
 
-        if (dot > 0.65) { // Cosine of ~49 degrees
+        if (dot > 0.45) {
           minDistance = dist;
           nearestPlant = plant;
         }
@@ -658,258 +1081,139 @@ export class FarmScene {
     return nearestPlant;
   }
 
-  // Update a plant's state in 3D (e.g. from DISEASED to TREATED)
-  public updatePlantState(plantId: string, newState: PlantHealthState) {
-    const plant = this.plants.find((p) => p.id === plantId);
-    if (!plant) return;
-
-    plant.state = newState;
-    const meshGroup = this.plantMeshes.get(plantId);
-    if (meshGroup) {
-      // Update leaf cluster materials
-      const newMat = this.getPlantFoliageMaterial(newState);
-      meshGroup.traverse((child) => {
-        const mesh = child as THREE.Mesh;
-        if (mesh.isMesh && mesh.geometry instanceof THREE.SphereGeometry) {
-          mesh.material = newMat;
-        }
-      });
-    }
-  }
-
   // ───────────────────────────────────────────────────────────────────────────
-  // Physics & Kinematic Step
-  // ───────────────────────────────────────────────────────────────────────────
-  public updateKinematics(deltaSec: number, centerUltrasonicCm: number): boolean {
-    // 1. Safety Interlock: Hard Stop if Center Obstacle < 25 cm and moving forward
-    let safetyStopTriggered = false;
-    if (centerUltrasonicCm < SAFETY_THRESHOLDS.OBSTACLE_CM && this.targetSpeed > 0) {
-      this.targetSpeed = 0;
-      safetyStopTriggered = true;
-    }
-
-    // 2. Smooth acceleration / deceleration
-    this.robotSpeed = THREE.MathUtils.lerp(this.robotSpeed, this.targetSpeed, 0.15);
-    this.turnRate = THREE.MathUtils.lerp(this.turnRate, this.targetTurnRate, 0.15);
-
-    // 3. Update Heading & Position
-    if (Math.abs(this.turnRate) > 0.001) {
-      this.robotHeading += this.turnRate * deltaSec;
-    }
-
-    if (Math.abs(this.robotSpeed) > 0.001) {
-      const moveDelta = this.robotSpeed * deltaSec;
-      const newX = this.robotX + Math.sin(this.robotHeading) * moveDelta;
-      const newZ = this.robotZ + Math.cos(this.robotHeading) * moveDelta;
-
-      // Boundary Collision Clamping (Keep within fence plot)
-      const halfW = (this.fieldWidth / 2) - 1.2;
-      const halfL = (this.fieldLength / 2) - 1.2;
-
-      this.robotX = THREE.MathUtils.clamp(newX, -halfW, halfW);
-      this.robotZ = THREE.MathUtils.clamp(newZ, -halfL, halfL);
-
-      // Animate Wheel Rotation
-      const wheelCircumference = Math.PI * 0.7; // ~0.35m radius
-      const spinDelta = (moveDelta / wheelCircumference) * Math.PI * 2 * 4.0;
-      this.wheelAngle += spinDelta;
-
-      const { frontLeft, frontRight, rearLeft, rearRight } = this.robotRefs.wheels;
-      frontLeft.rotation.x = this.wheelAngle;
-      frontRight.rotation.x = this.wheelAngle;
-      rearLeft.rotation.x = this.wheelAngle;
-      rearRight.rotation.x = this.wheelAngle;
-    }
-
-    // Synchronize 3D Robot Model
-    this.syncRobotTransform();
-
-    // Animate Spray Mist if active
-    if (this.sprayActive) {
-      this.animateSprayParticles(deltaSec);
-    }
-
-    return safetyStopTriggered;
-  }
-
-  private syncRobotTransform() {
-    this.robotRefs.rootGroup.position.set(this.robotX, 0, this.robotZ);
-    this.robotRefs.rootGroup.rotation.y = this.robotHeading;
-
-    // Robot stands level and straight
-    this.robotRefs.chassisGroup.rotation.set(0, 0, 0);
-  }
-
-  private animateSprayParticles(delta: number) {
-    const pos = this.sprayPositions;
-    const vel = this.sprayVelocities;
-    const count = pos.length / 3;
-
-    // Nozzle world position (under chassis)
-    const forwardX = Math.sin(this.robotHeading);
-    const forwardZ = Math.cos(this.robotHeading);
-    const nozzleX = this.robotX + forwardX * 0.6;
-    const nozzleY = 0.65;
-    const nozzleZ = this.robotZ + forwardZ * 0.6;
-
-    for (let i = 0; i < count; i++) {
-      pos[i * 3 + 0] += vel[i * 3 + 0] * delta;
-      pos[i * 3 + 1] += vel[i * 3 + 1] * delta;
-      pos[i * 3 + 2] += vel[i * 3 + 2] * delta;
-
-      // Reset when particle hits ground
-      if (pos[i * 3 + 1] < 0.05) {
-        pos[i * 3 + 0] = nozzleX + (Math.random() - 0.5) * 0.1;
-        pos[i * 3 + 1] = nozzleY;
-        pos[i * 3 + 2] = nozzleZ + (Math.random() - 0.5) * 0.1;
-
-        // Directed velocity cone toward target plant
-        const toTarget = this.sprayTargetPos.clone().sub(new THREE.Vector3(nozzleX, nozzleY, nozzleZ)).normalize();
-        const spread = 0.35;
-        vel[i * 3 + 0] = toTarget.x * 2.5 + (Math.random() - 0.5) * spread;
-        vel[i * 3 + 1] = -1.2 - Math.random() * 1.0;
-        vel[i * 3 + 2] = toTarget.z * 2.5 + (Math.random() - 0.5) * spread;
-      }
-    }
-    this.sprayParticles.geometry.attributes.position.needsUpdate = true;
-  }
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // Camera View Management
+  // Camera Perspectives & Follow Management
   // ───────────────────────────────────────────────────────────────────────────
   public setCameraMode(mode: SimCameraMode) {
     this.cameraMode = mode;
-    this.controls.enabled = (mode === 'ISOMETRIC' || mode === 'OVERHEAD');
+    this.controls.enabled = (mode === 'ISOMETRIC' || mode === 'OVERHEAD' || mode === 'CHASE');
 
     if (mode === 'OVERHEAD') {
-      this.camera.position.set(0, 22, 0.1);
-      this.controls.target.set(0, 0, 0);
+      this.camera.position.set(0, 32, 0.1);
+      this.controls.target.set(this.robotX, 0, this.robotZ);
     } else if (mode === 'ISOMETRIC') {
-      this.camera.position.set(10, 9, -10);
-      this.controls.target.set(0, 0.5, 0);
+      this.camera.position.set(this.robotX + 12, 10, this.robotZ + 12);
+      this.controls.target.set(this.robotX, 1.0, this.robotZ);
+    } else if (mode === 'CHASE') {
+      this.resetCameraView();
     }
   }
 
-  public getCameraMode(): SimCameraMode {
-    return this.cameraMode;
+  public resetCameraView() {
+    // Elevated 3rd-person perspective looking down the row into the field
+    const backDist = 7.5;
+    const height = 4.2;
+    const fwdX = Math.sin(this.robotHeading);
+    const fwdZ = -Math.cos(this.robotHeading);
+
+    this.camera.position.set(
+      this.robotX - fwdX * backDist,
+      height,
+      this.robotZ - fwdZ * backDist
+    );
+    this.controls.target.set(this.robotX, 1.1, this.robotZ - fwdZ * 4.0);
   }
 
-  private updateCameraChase() {
-    if (this.cameraMode === 'CHASE') {
-      // 3rd-person chase cam behind the robot
-      const backDist = 4.8;
-      const camHeight = 3.2;
-      const fwdX = Math.sin(this.robotHeading);
-      const fwdZ = Math.cos(this.robotHeading);
+  // Bind external thumbnail canvas for the "Robot Camera View"
+  public setBumperCanvas(canvas: HTMLCanvasElement | null) {
+    this.bumperCanvas = canvas;
+    if (canvas && !this.bumperRenderer) {
+      this.bumperRenderer = new THREE.WebGLRenderer({
+        canvas,
+        antialias: true,
+        powerPreference: 'low-power',
+      });
+      this.bumperRenderer.setSize(canvas.clientWidth || 320, canvas.clientHeight || 180);
+      this.bumperRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+    }
+  }
 
-      const targetCamPos = new THREE.Vector3(
+  // ───────────────────────────────────────────────────────────────────────────
+  // Animation & Render Loop
+  // ───────────────────────────────────────────────────────────────────────────
+  private animate() {
+    if (this.isDestroyed) return;
+
+    this.animFrameId = requestAnimationFrame(this.animate);
+
+    // Follow robot smooth camera tracking
+    if (this.followRobot && this.cameraMode === 'CHASE') {
+      const fwdX = Math.sin(this.robotHeading);
+      const fwdZ = -Math.cos(this.robotHeading);
+      const backDist = 7.2;
+      const camH = 4.0;
+
+      const targetCam = new THREE.Vector3(
         this.robotX - fwdX * backDist,
-        camHeight,
+        camH,
         this.robotZ - fwdZ * backDist
       );
 
-      this.camera.position.lerp(targetCamPos, 0.12);
-      this.camera.lookAt(this.robotX + fwdX * 1.5, 1.2, this.robotZ + fwdZ * 1.5);
-    } else if (this.cameraMode === 'BUMPER') {
-      // 1st-person FPV bumper cam looking out front
-      const fwdX = Math.sin(this.robotHeading);
-      const fwdZ = Math.cos(this.robotHeading);
-
-      this.camera.position.set(this.robotX + fwdX * 0.9, 1.45, this.robotZ + fwdZ * 0.9);
-      this.camera.lookAt(this.robotX + fwdX * 5.0, 0.9, this.robotZ + fwdZ * 5.0);
-    }
-  }
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // Reset Routines
-  // ───────────────────────────────────────────────────────────────────────────
-  public resetRobotPosition() {
-    this.robotX = 0.0;
-    this.robotZ = -6.5;
-    this.robotHeading = 0.0;
-    this.robotSpeed = 0.0;
-    this.targetSpeed = 0.0;
-    this.turnRate = 0.0;
-    this.targetTurnRate = 0.0;
-    this.syncRobotTransform();
-  }
-
-  public resetField() {
-    this.resetRobotPosition();
-    this.deactivateSpray();
-    // Reset all plants to their original state
-    this.plants.forEach((p) => {
-      if (p.id === 'PLANT-#003' || p.id === 'PLANT-#016') {
-        this.updatePlantState(p.id, 'DISEASED');
-      } else if (p.id === 'PLANT-#011') {
-        this.updatePlantState(p.id, 'WARNING');
-      } else {
-        this.updatePlantState(p.id, 'HEALTHY');
-      }
-    });
-  }
-
-  public getAllPlants(): FarmPlant[] {
-    return [...this.plants];
-  }
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // Main Animation Loop
-  // ───────────────────────────────────────────────────────────────────────────
-  private animate(currentTime: number) {
-    if (this.isDestroyed) return;
-    this.animFrameId = requestAnimationFrame(this.animate);
-
-    const delta = Math.min((currentTime - this.lastTime) / 1000, 0.1);
-    this.lastTime = currentTime;
-
-    if (this.controls.enabled) {
-      this.controls.update();
-    } else {
-      this.updateCameraChase();
+      this.camera.position.lerp(targetCam, 0.08);
+      this.controls.target.lerp(
+        new THREE.Vector3(this.robotX, 1.1, this.robotZ + fwdZ * 3.5),
+        0.08
+      );
     }
 
+    this.controls.update();
+
+    // 1. Render Main Simulation Viewport
     this.renderer.render(this.scene, this.camera);
+
+    // 2. Render Secondary Robot Bumper Camera Viewport (Live FPV Feed)
+    if (this.bumperRenderer && this.bumperCanvas) {
+      this.bumperRenderer.render(this.scene, this.bumperCamera);
+    }
   }
 
   public resize() {
     if (!this.container || this.isDestroyed) return;
     const width = this.container.clientWidth;
     const height = this.container.clientHeight;
-    if (width === 0 || height === 0) return;
-
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
+
+    if (this.bumperRenderer && this.bumperCanvas) {
+      this.bumperRenderer.setSize(this.bumperCanvas.clientWidth, this.bumperCanvas.clientHeight);
+    }
+  }
+
+  public getAllPlants(): FarmPlant[] {
+    return this.plants;
+  }
+
+  public resetRobotPosition() {
+    this.resetFieldState();
+  }
+
+  public resetField() {
+    this.resetFieldState();
+  }
+
+  public resetFieldState() {
+    this.robotX = 0.0;
+    this.robotZ = 2.0;
+    this.robotHeading = 0.0;
+    this.robotSpeed = 0.0;
+    this.targetSpeed = 0.0;
+    this.turnRate = 0.0;
+    this.targetTurnRate = 0.0;
+    this.syncRobotTransform();
+    this.resetCameraView();
   }
 
   public destroy() {
     this.isDestroyed = true;
     if (this.animFrameId !== null) {
       cancelAnimationFrame(this.animFrameId);
-      this.animFrameId = null;
     }
-
     this.controls.dispose();
-
-    // Traverse and dispose geometries and materials
-    this.scene.traverse((obj) => {
-      if ((obj as THREE.Mesh).isMesh) {
-        const mesh = obj as THREE.Mesh;
-        if (mesh.geometry) mesh.geometry.dispose();
-        if (mesh.material) {
-          if (Array.isArray(mesh.material)) {
-            mesh.material.forEach((m) => m.dispose());
-          } else {
-            mesh.material.dispose();
-          }
-        }
-      }
-    });
-
     this.renderer.dispose();
-    if (this.renderer.domElement && this.renderer.domElement.parentNode) {
-      this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
+    if (this.bumperRenderer) this.bumperRenderer.dispose();
+    if (this.renderer.domElement.parentElement) {
+      this.renderer.domElement.parentElement.removeChild(this.renderer.domElement);
     }
   }
 }

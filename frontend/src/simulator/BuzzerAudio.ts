@@ -49,6 +49,14 @@ export class BuzzerAudioService {
     }
   }
 
+  public toggleMute(): boolean {
+    this.isMuted = !this.isMuted;
+    if (this.isMuted) {
+      this.stop();
+    }
+    return this.isMuted;
+  }
+
   public getIsMuted(): boolean {
     return this.isMuted;
   }

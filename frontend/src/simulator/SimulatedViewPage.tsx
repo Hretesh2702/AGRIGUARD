@@ -1,7 +1,22 @@
+/**
+ * AgriGuard Digital Twin & 3D Farm Simulator — SimulatedViewPage
+ *
+ * Visually & ergonomically designed to match the realistic working agricultural field reference:
+ * - Full-height 3D farm viewport with AgriGuard prototype rover & volumetric radar cones
+ * - Top Bar: Simulated Farm View, Scenario presets, Simulation speed pills (0.5x, 1x, 2x), Reset Field
+ * - Top-Left: Ultrasonic Proximity card (Left / Center / Right with warning banner)
+ * - Middle-Left: Robot Camera View (Live simulated FPV feed from front bumper)
+ * - Bottom-Left: AI Crop Analysis card (Plant Detected, Early Blight 92.4%, View Details, Request Treatment)
+ * - Top-Right: 2D Field Map (6 structured crop rows, color-coded health dots, robot position & heading cone)
+ * - Bottom-Row:
+ *   - Robot Controls (D-Pad + Pump / Relay indicators)
+ *   - Robot Telemetry (Live Soil Moisture, NPK, Temperature, Humidity, IMU)
+ *   - Environmental Impact (Conventional vs AgriGuard comparison, Avoided CO2e, SIMULATION / ESTIMATE)
+ */
+
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
-  Boxes,
-  Play,
+  Leaf,
   RotateCcw,
   Compass,
   AlertTriangle,
@@ -24,11 +39,13 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
-  Leaf,
   TrendingDown,
   Info,
   Scan,
-  Maximize2
+  Maximize2,
+  Eye,
+  Sliders,
+  ChevronDown
 } from 'lucide-react';
 import { FarmScene, SimCameraMode } from './FarmScene';
 import { SimulatorManager, SIMULATOR_ZONES } from './SimulatorManager';
@@ -44,16 +61,22 @@ import { SAFETY_THRESHOLDS } from '../digitalTwin/types';
 
 export const SimulatedViewPage: React.FC = () => {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const bumperCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const fieldMapCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const sceneRef = useRef<FarmScene | null>(null);
   const managerRef = useRef<SimulatorManager | null>(null);
 
-  // Live Simulator State
+  // Live Simulation State
   const [telemetry, setTelemetry] = useState<SimulatorTelemetry | null>(null);
   const [logs, setLogs] = useState<SimulatorLogEvent[]>([]);
-  const [activeCamera, setActiveCamera] = useState<SimCameraMode>('CHASE');
   const [activePreset, setActivePreset] = useState<ScenarioPresetId>('NORMAL_FIELD');
+  const [simSpeed, setSimSpeed] = useState<number>(1.0);
   const [isAudioMuted, setIsAudioMuted] = useState<boolean>(false);
-  const [operatorName, setOperatorName] = useState<string>('Operator-Swayam');
+  const [operatorName, setOperatorName] = useState<string>('Swayam-Lead');
+
+  // Modals & Panels
+  const [isApprovalModalOpen, setIsApprovalModalOpen] = useState<boolean>(false);
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState<boolean>(false);
   const [selectedPlant, setSelectedPlant] = useState<FarmPlant | null>(null);
 
   // Initialize Simulator on Mount
@@ -66,6 +89,11 @@ export const SimulatedViewPage: React.FC = () => {
     sceneRef.current = scene;
     managerRef.current = manager;
 
+    // Connect Bumper Camera canvas if available
+    if (bumperCanvasRef.current) {
+      scene.setBumperCanvas(bumperCanvasRef.current);
+    }
+
     manager.setCallbacks(
       (newTel) => setTelemetry(newTel),
       (newLogs) => setLogs(newLogs)
@@ -74,12 +102,9 @@ export const SimulatedViewPage: React.FC = () => {
     const handleResize = () => scene.resize();
     window.addEventListener('resize', handleResize);
 
-    // Keyboard Movement Listener
+    // Keyboard Movement Listener (W/A/S/D and Arrow Keys)
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Unlock Web Audio on first user keypress
       buzzerAudio.unlockAudio();
-
-      // Don't intercept if typing in an input
       if ((e.target as HTMLElement).tagName === 'INPUT') return;
 
       switch (e.key) {
@@ -135,435 +160,739 @@ export const SimulatedViewPage: React.FC = () => {
     };
   }, []);
 
-  // Unlock Audio on canvas or button click
-  const handleUserInteract = () => {
-    buzzerAudio.unlockAudio();
-  };
-
-  const handleSetCamera = (mode: SimCameraMode) => {
-    handleUserInteract();
-    setActiveCamera(mode);
-    if (sceneRef.current) {
-      sceneRef.current.setCameraMode(mode);
+  // Update Bumper Canvas ref when element mounts
+  useEffect(() => {
+    if (bumperCanvasRef.current && sceneRef.current) {
+      sceneRef.current.setBumperCanvas(bumperCanvasRef.current);
     }
-  };
+  }, [bumperCanvasRef.current]);
 
-  const handleSelectPreset = (preset: ScenarioPresetId) => {
-    handleUserInteract();
-    setActivePreset(preset);
-    if (managerRef.current) {
-      managerRef.current.applyScenarioPreset(preset);
+  // Render 2D Top-Down Aerial Field Map
+  useEffect(() => {
+    const canvas = fieldMapCanvasRef.current;
+    if (!canvas || !sceneRef.current) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const w = canvas.width;
+    const h = canvas.height;
+
+    // Field bounds: X from -13 to +13 (26m), Z from -20 to +20 (40m)
+    const fieldW = 26.0;
+    const fieldL = 40.0;
+
+    const toMapX = (worldX: number) => ((worldX + 13.0) / fieldW) * w;
+    const toMapY = (worldZ: number) => ((worldZ + 20.0) / fieldL) * h;
+
+    // 1. Draw Field Soil Background
+    ctx.fillStyle = '#1e140d';
+    ctx.fillRect(0, 0, w, h);
+
+    // 2. Draw Tilled Crop Row Furrow Lines
+    const rowXCoords = [-7.5, -4.5, -1.5, 1.5, 4.5, 7.5];
+    ctx.strokeStyle = 'rgba(74, 53, 37, 0.65)';
+    ctx.lineWidth = 14;
+    rowXCoords.forEach((rx) => {
+      const mx = toMapX(rx);
+      ctx.beginPath();
+      ctx.moveTo(mx, toMapY(-16.0));
+      ctx.lineTo(mx, toMapY(16.0));
+      ctx.stroke();
+    });
+
+    // 3. Draw Plants as Color-Coded Dots
+    const plants = sceneRef.current.plants;
+    plants.forEach((p) => {
+      const px = toMapX(p.position.x);
+      const py = toMapY(p.position.z);
+
+      let color = '#22c55e'; // Green Healthy
+      if (p.state === 'WARNING') color = '#eab308'; // Yellow Warning
+      if (p.state === 'DISEASED') color = '#ef4444'; // Red Diseased
+      if (p.state === 'TREATED') color = '#a855f7'; // Purple Treated
+
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(px, py, 3.2, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // 4. Draw Obstacles (Grey Dots)
+    ctx.fillStyle = '#94a3b8';
+    // Boulder at X: 0.92, Z: -2.2
+    ctx.beginPath();
+    ctx.arc(toMapX(0.92), toMapY(-2.2), 5.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 5. Draw Robot Marker & Heading Flashlight Cone
+    if (telemetry) {
+      const rx = toMapX(telemetry.position.x);
+      const ry = toMapY(telemetry.position.z);
+      const headingRad = (telemetry.headingDeg * Math.PI) / 180;
+
+      // Heading forward direction: (sin(h), -cos(h))
+      const fwdX = Math.sin(headingRad);
+      const fwdY = -Math.cos(headingRad);
+
+      // Flashlight Field of View Cone
+      ctx.fillStyle = 'rgba(56, 189, 248, 0.25)';
+      ctx.beginPath();
+      ctx.moveTo(rx, ry);
+      const coneLen = 32;
+      const spread = 0.5;
+      ctx.lineTo(rx + Math.sin(headingRad - spread) * coneLen, ry - Math.cos(headingRad - spread) * coneLen);
+      ctx.lineTo(rx + Math.sin(headingRad + spread) * coneLen, ry - Math.cos(headingRad + spread) * coneLen);
+      ctx.closePath();
+      ctx.fill();
+
+      // Robot Body Dot
+      ctx.fillStyle = '#0284c7';
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(rx, ry, 6.0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      // Nose Pointer
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(rx, ry);
+      ctx.lineTo(rx + fwdX * 9, ry + fwdY * 9);
+      ctx.stroke();
     }
-  };
+  }, [telemetry]);
 
-  const handleMove = (cmd: SimulationMovementCommand) => {
-    handleUserInteract();
-    if (managerRef.current) {
-      managerRef.current.move(cmd);
-    }
-  };
-
-  const handleApproveSpray = () => {
-    handleUserInteract();
-    if (managerRef.current) {
-      managerRef.current.approveAndSpray(operatorName);
-    }
-  };
-
+  // Audio Toggle
   const handleToggleMute = () => {
-    handleUserInteract();
-    const next = !isAudioMuted;
-    setIsAudioMuted(next);
-    buzzerAudio.setMuted(next);
+    buzzerAudio.unlockAudio();
+    const muted = buzzerAudio.toggleMute();
+    setIsAudioMuted(muted);
   };
 
-  // Environmental impact values
-  const impact = managerRef.current ? managerRef.current.getEnvironmentalImpact() : null;
+  // Movement Helper
+  const handleMove = (cmd: SimulationMovementCommand) => {
+    buzzerAudio.unlockAudio();
+    managerRef.current?.move(cmd);
+  };
 
-  // Active target plant from inspection camera
-  const targetPlant = telemetry?.sprayTargetPlantId
-    ? sceneRef.current?.getAllPlants().find((p) => p.id === telemetry.sprayTargetPlantId) || managerRef.current?.detectedPlant
-    : managerRef.current?.detectedPlant;
+  // Scenario Changer
+  const handleSelectPreset = (preset: ScenarioPresetId) => {
+    setActivePreset(preset);
+    managerRef.current?.applyScenarioPreset(preset);
+  };
+
+  // Reset Field
+  const handleResetField = () => {
+    managerRef.current?.resetField();
+  };
+
+  // Farmer Approval Spray Execution
+  const handleApproveSpray = () => {
+    if (!managerRef.current) return;
+    const success = managerRef.current.approveAndSpray(operatorName);
+    if (success) {
+      setIsApprovalModalOpen(false);
+    }
+  };
+
+  // Target plant acquired by camera
+  const targetPlant = managerRef.current?.getDetectedPlant() || sceneRef.current?.plants.find((p) => p.state === 'DISEASED') || null;
+
+  // Environmental Metrics
+  const envImpact = managerRef.current?.getEnvironmentalImpact() || {
+    conventionalBaselineMl: 1000,
+    agriguardPrecisionMl: 240,
+    volumeSavedMl: 760,
+    percentageReduction: 76.0,
+    areaTreatedM2: 18,
+    robotEnergyKwh: 0.18,
+    conventionalFootprintKgCO2e: 1.84,
+    agriguardFootprintKgCO2e: 0.62,
+    estimatedAvoidedCO2eKg: 1.22,
+  };
+
+  const usLeft = telemetry?.ultrasonic.left ?? 48;
+  const usCenter = telemetry?.ultrasonic.center ?? 72;
+  const usRight = telemetry?.ultrasonic.right ?? 18;
+
+  const isLeftObstacle = usLeft < SAFETY_THRESHOLDS.OBSTACLE_CM;
+  const isCenterObstacle = usCenter < SAFETY_THRESHOLDS.OBSTACLE_CM;
+  const isRightObstacle = usRight < SAFETY_THRESHOLDS.OBSTACLE_CM;
+
+  const isAnyObstacle = isLeftObstacle || isCenterObstacle || isRightObstacle;
+  const isAnyWarning = usLeft <= SAFETY_THRESHOLDS.WARNING_CM || usCenter <= SAFETY_THRESHOLDS.WARNING_CM || usRight <= SAFETY_THRESHOLDS.WARNING_CM;
 
   return (
-    <div
-      onClick={handleUserInteract}
-      style={{
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '0.85rem',
+      width: '100%',
+      color: '#fff',
+      fontFamily: 'Inter, system-ui, sans-serif',
+      position: 'relative'
+    }}>
+      {/* ── 1. Top Simulation Header & Control Bar ────────────────────────────── */}
+      <div className="glass-panel" style={{
+        padding: '0.75rem 1.25rem',
+        borderRadius: '14px',
         display: 'flex',
-        flexDirection: 'column',
-        gap: '1.25rem',
-        width: '100%',
-        boxSizing: 'border-box'
-      }}
-    >
-      {/* ── Top Header & Scenario Presets Bar ──────────────────────────────── */}
-      <div className="glass-panel" style={{ padding: '1rem 1.25rem' }}>
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '1rem'
-        }}>
-          {/* Title & Badge */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <div style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: '10px',
-              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(6, 182, 212, 0.25))',
-              border: '1px solid var(--emerald-500)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 0 15px rgba(16, 185, 129, 0.25)'
-            }}>
-              <Boxes size={22} color="var(--emerald-400)" />
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '1rem',
+        border: '1px solid var(--border-subtle)',
+        background: 'rgba(11, 19, 32, 0.85)',
+        backdropFilter: 'blur(12px)'
+      }}>
+        {/* Title */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{
+            width: '38px',
+            height: '38px',
+            borderRadius: '10px',
+            background: 'linear-gradient(135deg, var(--emerald-500), #065f46)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 0 16px var(--emerald-glow)'
+          }}>
+            <Leaf size={22} color="#fff" />
+          </div>
+          <div>
+            <div style={{ fontSize: '1.2rem', fontWeight: 800, letterSpacing: '-0.02em', color: '#fff' }}>
+              Simulated Farm View
             </div>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <h1 style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0, color: '#fff' }}>
-                  SIMULATED VIEW — 3D FARM ROBOT WORLD
-                </h1>
-                <span className="status-pill" style={{
-                  background: 'rgba(56, 189, 248, 0.15)',
-                  color: 'var(--sky-400)',
-                  border: '1px solid rgba(56, 189, 248, 0.35)',
-                  fontSize: '0.64rem',
-                  padding: '0.15rem 0.5rem',
-                  fontWeight: 800
-                }}>
-                  VIRTUAL PHYSICS ACTIVE
-                </span>
-              </div>
-              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0.15rem 0 0 0' }}>
-                Operate the virtual AgriGuard robot across farmland crop rows with real-time raycasting & agronomic modeling
-              </p>
+            <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+              Interactive simulation of AgriGuard in a realistic farm environment
+            </div>
+          </div>
+        </div>
+
+        {/* Right Controls: Scenario Dropdown, Speed Pills, Reset Button */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap' }}>
+          {/* Scenario Selector Dropdown */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+            <span style={{ fontSize: '0.74rem', color: 'var(--text-dim)', fontWeight: 600 }}>Scenario:</span>
+            <select
+              value={activePreset}
+              onChange={(e) => handleSelectPreset(e.target.value as ScenarioPresetId)}
+              style={{
+                background: 'rgba(255, 255, 255, 0.06)',
+                border: '1px solid rgba(255, 255, 255, 0.14)',
+                borderRadius: '8px',
+                padding: '0.35rem 0.75rem',
+                color: '#fff',
+                fontSize: '0.78rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                outline: 'none'
+              }}
+            >
+              <option value="NORMAL_FIELD" style={{ background: '#0b1320' }}>Mixed Field (Normal)</option>
+              <option value="OBSTACLE_AHEAD" style={{ background: '#0b1320' }}>Obstacle Ahead (Rock)</option>
+              <option value="DISEASED_ZONE" style={{ background: '#0b1320' }}>Diseased Zone (Early Blight)</option>
+              <option value="DRY_SOIL_ZONE" style={{ background: '#0b1320' }}>Dry Soil Zone</option>
+              <option value="PRECISION_SPRAY" style={{ background: '#0b1320' }}>Precision Spray Demo</option>
+              <option value="FULL_DEMO" style={{ background: '#0b1320' }}>Full Interactive Demo</option>
+            </select>
+          </div>
+
+          {/* Simulation Speed Pills */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            <span style={{ fontSize: '0.74rem', color: 'var(--text-dim)', fontWeight: 600 }}>Simulation Speed:</span>
+            <div style={{ display: 'flex', background: 'rgba(0,0,0,0.4)', padding: '2px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
+              {[0.5, 1.0, 2.0].map((spd) => (
+                <button
+                  key={spd}
+                  type="button"
+                  onClick={() => setSimSpeed(spd)}
+                  style={{
+                    padding: '0.2rem 0.55rem',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: simSpeed === spd ? 'var(--emerald-500)' : 'transparent',
+                    color: simSpeed === spd ? '#05080f' : 'var(--text-muted)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {spd}x
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* Scenario Presets */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)', fontWeight: 700 }}>
-              Scenarios:
-            </span>
-            {([
-              { id: 'NORMAL_FIELD', label: '1. Normal Field' },
-              { id: 'OBSTACLE_AHEAD', label: '2. Obstacle Ahead' },
-              { id: 'DISEASED_ZONE', label: '3. Diseased Crop' },
-              { id: 'DRY_SOIL_ZONE', label: '4. Dry Soil Zone' },
-              { id: 'PRECISION_SPRAY', label: '5. Precision Spray' },
-              { id: 'FULL_DEMO', label: '★ FULL DEMO' }
-            ] as const).map(({ id, label }) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => handleSelectPreset(id)}
-                className="btn"
-                style={{
-                  padding: '0.28rem 0.65rem',
-                  fontSize: '0.70rem',
-                  fontWeight: activePreset === id ? 800 : 600,
-                  borderRadius: '6px',
-                  background: activePreset === id
-                    ? (id === 'FULL_DEMO' ? 'var(--cyan-500)' : 'var(--emerald-500)')
-                    : 'rgba(255, 255, 255, 0.05)',
-                  color: activePreset === id ? '#05080f' : 'var(--text-muted)',
-                  border: activePreset === id
-                    ? (id === 'FULL_DEMO' ? '1px solid var(--cyan-400)' : '1px solid var(--emerald-400)')
-                    : '1px solid rgba(255, 255, 255, 0.1)',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease'
-                }}
-              >
-                {label}
-              </button>
-            ))}
+          {/* Reset Field Button */}
+          <button
+            type="button"
+            onClick={handleResetField}
+            className="btn btn-outline"
+            style={{
+              padding: '0.4rem 0.85rem',
+              fontSize: '0.78rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              borderRadius: '8px',
+              border: '1px solid rgba(255, 255, 255, 0.15)',
+              color: '#fff',
+              fontWeight: 600
+            }}
+          >
+            <RotateCcw size={14} />
+            <span>Reset Field</span>
+          </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                handleUserInteract();
-                managerRef.current?.resetField();
-              }}
-              title="Reset field and robot to baseline"
-              className="btn btn-outline"
-              style={{
-                padding: '0.28rem 0.6rem',
-                fontSize: '0.70rem',
-                borderRadius: '6px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.35rem',
-                color: 'var(--text-muted)'
-              }}
-            >
-              <RotateCcw size={12} />
-              Reset
-            </button>
+          {/* Audio Mute Toggle */}
+          <button
+            type="button"
+            onClick={handleToggleMute}
+            className="btn btn-outline"
+            style={{
+              padding: '0.4rem',
+              borderRadius: '8px',
+              color: isAudioMuted ? 'var(--rose-400)' : 'var(--emerald-400)',
+              border: '1px solid rgba(255, 255, 255, 0.15)'
+            }}
+            title={isAudioMuted ? 'Unmute Audio Buzzer' : 'Mute Audio Buzzer'}
+          >
+            {isAudioMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
+          </button>
+        </div>
+      </div>
+
+      {/* ── 2. Main 3D Simulation Viewport with Overlaid HUD Panels ──────────── */}
+      <div style={{
+        position: 'relative',
+        width: '100%',
+        height: '780px',
+        borderRadius: '16px',
+        overflow: 'hidden',
+        border: '1px solid var(--border-subtle)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.6)'
+      }}>
+        {/* Full-Canvas Three.js Mount */}
+        <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }} />
+
+        {/* ── Overlaid HUD Cards (Positioned exactly matching reference image) ── */}
+
+        {/* Card 1: Top-Left Ultrasonic Proximity */}
+        <div style={{
+          position: 'absolute',
+          top: '16px',
+          left: '16px',
+          width: '275px',
+          background: 'rgba(11, 19, 32, 0.88)',
+          backdropFilter: 'blur(14px)',
+          borderRadius: '12px',
+          border: '1px solid rgba(255, 255, 255, 0.12)',
+          padding: '0.85rem',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+          zIndex: 10
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.65rem' }}>
+            <Radio size={15} color="var(--emerald-400)" />
+            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#fff' }}>Ultrasonic Proximity</span>
+          </div>
+
+          {/* 3 Metric Value Boxes */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.4rem', marginBottom: '0.6rem' }}>
+            {/* Left */}
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.04)',
+              border: `1px solid ${usLeft < SAFETY_THRESHOLDS.OBSTACLE_CM ? 'var(--rose-500)' : usLeft <= SAFETY_THRESHOLDS.WARNING_CM ? 'var(--amber-500)' : 'rgba(255,255,255,0.08)'}`,
+              borderRadius: '8px',
+              padding: '0.45rem 0.3rem',
+              textAlign: 'center'
+            }}>
+              <div style={{ fontSize: '0.62rem', color: 'var(--text-dim)', fontWeight: 700 }}>Left</div>
+              <div style={{ fontSize: '1.05rem', fontWeight: 900, color: usLeft < SAFETY_THRESHOLDS.OBSTACLE_CM ? 'var(--rose-400)' : usLeft <= SAFETY_THRESHOLDS.WARNING_CM ? 'var(--amber-400)' : 'var(--emerald-400)' }}>
+                {usLeft}<span style={{ fontSize: '0.65rem', fontWeight: 600 }}>cm</span>
+              </div>
+              <div style={{
+                fontSize: '0.58rem',
+                fontWeight: 800,
+                color: usLeft < SAFETY_THRESHOLDS.OBSTACLE_CM ? 'var(--rose-400)' : usLeft <= SAFETY_THRESHOLDS.WARNING_CM ? 'var(--amber-400)' : 'var(--emerald-400)',
+                marginTop: '2px'
+              }}>
+                {usLeft < SAFETY_THRESHOLDS.OBSTACLE_CM ? 'OBSTACLE' : usLeft <= SAFETY_THRESHOLDS.WARNING_CM ? 'WARNING' : 'SAFE'}
+              </div>
+            </div>
+
+            {/* Center */}
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.04)',
+              border: `1px solid ${usCenter < SAFETY_THRESHOLDS.OBSTACLE_CM ? 'var(--rose-500)' : usCenter <= SAFETY_THRESHOLDS.WARNING_CM ? 'var(--amber-500)' : 'rgba(255,255,255,0.08)'}`,
+              borderRadius: '8px',
+              padding: '0.45rem 0.3rem',
+              textAlign: 'center'
+            }}>
+              <div style={{ fontSize: '0.62rem', color: 'var(--text-dim)', fontWeight: 700 }}>Center</div>
+              <div style={{ fontSize: '1.05rem', fontWeight: 900, color: usCenter < SAFETY_THRESHOLDS.OBSTACLE_CM ? 'var(--rose-400)' : usCenter <= SAFETY_THRESHOLDS.WARNING_CM ? 'var(--amber-400)' : 'var(--emerald-400)' }}>
+                {usCenter}<span style={{ fontSize: '0.65rem', fontWeight: 600 }}>cm</span>
+              </div>
+              <div style={{
+                fontSize: '0.58rem',
+                fontWeight: 800,
+                color: usCenter < SAFETY_THRESHOLDS.OBSTACLE_CM ? 'var(--rose-400)' : usCenter <= SAFETY_THRESHOLDS.WARNING_CM ? 'var(--amber-400)' : 'var(--emerald-400)',
+                marginTop: '2px'
+              }}>
+                {usCenter < SAFETY_THRESHOLDS.OBSTACLE_CM ? 'OBSTACLE' : usCenter <= SAFETY_THRESHOLDS.WARNING_CM ? 'WARNING' : 'SAFE'}
+              </div>
+            </div>
+
+            {/* Right */}
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.04)',
+              border: `1px solid ${usRight < SAFETY_THRESHOLDS.OBSTACLE_CM ? 'var(--rose-500)' : usRight <= SAFETY_THRESHOLDS.WARNING_CM ? 'var(--amber-500)' : 'rgba(255,255,255,0.08)'}`,
+              borderRadius: '8px',
+              padding: '0.45rem 0.3rem',
+              textAlign: 'center'
+            }}>
+              <div style={{ fontSize: '0.62rem', color: 'var(--text-dim)', fontWeight: 700 }}>Right</div>
+              <div style={{ fontSize: '1.05rem', fontWeight: 900, color: usRight < SAFETY_THRESHOLDS.OBSTACLE_CM ? 'var(--rose-400)' : usRight <= SAFETY_THRESHOLDS.WARNING_CM ? 'var(--amber-400)' : 'var(--emerald-400)' }}>
+                {usRight}<span style={{ fontSize: '0.65rem', fontWeight: 600 }}>cm</span>
+              </div>
+              <div style={{
+                fontSize: '0.58rem',
+                fontWeight: 800,
+                color: usRight < SAFETY_THRESHOLDS.OBSTACLE_CM ? 'var(--rose-400)' : usRight <= SAFETY_THRESHOLDS.WARNING_CM ? 'var(--amber-400)' : 'var(--emerald-400)',
+                marginTop: '2px'
+              }}>
+                {usRight < SAFETY_THRESHOLDS.OBSTACLE_CM ? 'OBSTACLE' : usRight <= SAFETY_THRESHOLDS.WARNING_CM ? 'WARNING' : 'SAFE'}
+              </div>
+            </div>
+          </div>
+
+          {/* Obstacle Warning Box */}
+          {isAnyObstacle ? (
+            <div style={{
+              background: 'rgba(244, 63, 94, 0.14)',
+              border: '1px solid var(--rose-500)',
+              borderRadius: '8px',
+              padding: '0.45rem 0.65rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.55rem'
+            }}>
+              <AlertTriangle size={16} color="var(--rose-500)" style={{ flexShrink: 0 }} />
+              <div>
+                <div style={{ fontSize: '0.72rem', fontWeight: 900, color: 'var(--rose-400)' }}>
+                  {isRightObstacle ? 'OBSTACLE RIGHT' : isCenterObstacle ? 'OBSTACLE AHEAD' : 'OBSTACLE LEFT'}
+                </div>
+                <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)' }}>
+                  Robot will stop if obstacle is closer.
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={{
+              background: 'rgba(16, 185, 129, 0.08)',
+              border: '1px solid rgba(16, 185, 129, 0.25)',
+              borderRadius: '8px',
+              padding: '0.4rem 0.6rem',
+              fontSize: '0.68rem',
+              color: 'var(--emerald-400)',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem'
+            }}>
+              <CheckCircle2 size={13} />
+              <span>Forward driving corridor clear</span>
+            </div>
+          )}
+        </div>
+
+        {/* Card 2: Middle-Left Robot Camera View (Live simulated FPV feed) */}
+        <div style={{
+          position: 'absolute',
+          top: '195px',
+          left: '16px',
+          width: '275px',
+          background: 'rgba(11, 19, 32, 0.88)',
+          backdropFilter: 'blur(14px)',
+          borderRadius: '12px',
+          border: '1px solid rgba(255, 255, 255, 0.12)',
+          padding: '0.85rem',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+          zIndex: 10
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.55rem' }}>
+            <Camera size={15} color="var(--emerald-400)" />
+            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#fff' }}>Robot Camera View</span>
+          </div>
+
+          {/* Canvas Rendering FPV Bumper Camera Feed */}
+          <div style={{
+            width: '100%',
+            height: '135px',
+            borderRadius: '8px',
+            overflow: 'hidden',
+            background: '#040b14',
+            position: 'relative',
+            border: '1px solid rgba(255, 255, 255, 0.1)'
+          }}>
+            <canvas
+              ref={bumperCanvasRef}
+              width={255}
+              height={135}
+              style={{ width: '100%', height: '100%', display: 'block' }}
+            />
+            {/* Target Reticle Overlay */}
+            <div style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: '40px',
+              height: '40px',
+              border: '1px dashed rgba(16, 185, 129, 0.65)',
+              borderRadius: '4px',
+              pointerEvents: 'none'
+            }} />
+          </div>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.35rem', textAlign: 'center' }}>
+            Live simulated camera feed
+          </div>
+        </div>
+
+        {/* Card 3: Bottom-Left AI Crop Analysis */}
+        <div style={{
+          position: 'absolute',
+          bottom: '16px',
+          left: '16px',
+          width: '275px',
+          background: 'rgba(11, 19, 32, 0.88)',
+          backdropFilter: 'blur(14px)',
+          borderRadius: '12px',
+          border: '1px solid rgba(255, 255, 255, 0.12)',
+          padding: '0.85rem',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+          zIndex: 10
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.55rem' }}>
+            <Leaf size={15} color="var(--emerald-400)" />
+            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#fff' }}>AI Crop Analysis</span>
+          </div>
+
+          {targetPlant ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                {/* Foliage Thumbnail */}
+                <div style={{
+                  width: '64px',
+                  height: '64px',
+                  borderRadius: '8px',
+                  background: 'linear-gradient(135deg, #166534, #14532d)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  border: '1px solid rgba(34, 197, 94, 0.3)',
+                  overflow: 'hidden'
+                }}>
+                  <Leaf size={32} color="#86efac" />
+                </div>
+
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '0.80rem', fontWeight: 800, color: '#fff' }}>Plant Detected</div>
+                  <div style={{ fontSize: '0.70rem', color: 'var(--text-muted)' }}>Crop: {targetPlant.cropType}</div>
+                  <div style={{ fontSize: '0.70rem', color: 'var(--amber-400)', fontWeight: 600 }}>
+                    Disease: {targetPlant.disease?.name || 'Early Symptoms'}
+                  </div>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>
+                    Confidence: {(targetPlant.disease?.confidence ? targetPlant.disease.confidence * 100 : 92.4).toFixed(1)}%
+                  </div>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>
+                    Health Score: {targetPlant.healthScore}
+                  </div>
+                </div>
+              </div>
+
+              {/* Status Pill */}
+              <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                <span className={`status-pill ${targetPlant.state === 'DISEASED' ? 'status-danger' : targetPlant.state === 'WARNING' ? 'status-warning' : 'status-online'}`} style={{ fontSize: '0.64rem', padding: '0.15rem 0.5rem', fontWeight: 800 }}>
+                  {targetPlant.state}
+                </span>
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', gap: '0.45rem', marginTop: '0.2rem' }}>
+                <button
+                  type="button"
+                  onClick={() => { setSelectedPlant(targetPlant); setIsDetailsModalOpen(true); }}
+                  className="btn btn-outline"
+                  style={{
+                    flex: 1,
+                    padding: '0.4rem 0.5rem',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    borderRadius: '6px',
+                    borderColor: 'rgba(255,255,255,0.18)',
+                    color: '#fff'
+                  }}
+                >
+                  View Details
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsApprovalModalOpen(true)}
+                  className="btn btn-primary"
+                  style={{
+                    flex: 1,
+                    padding: '0.4rem 0.5rem',
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    borderRadius: '6px'
+                  }}
+                >
+                  Request Treatment
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textAlign: 'center', padding: '1rem 0' }}>
+              Orient rover camera towards a crop row to inspect target plant.
+            </div>
+          )}
+        </div>
+
+        {/* Card 4: Top-Right Field Map (2D Aerial crop row grid & robot cone) */}
+        <div style={{
+          position: 'absolute',
+          top: '16px',
+          right: '16px',
+          width: '275px',
+          background: 'rgba(11, 19, 32, 0.88)',
+          backdropFilter: 'blur(14px)',
+          borderRadius: '12px',
+          border: '1px solid rgba(255, 255, 255, 0.12)',
+          padding: '0.85rem',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+          zIndex: 10
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.55rem' }}>
+            <Layers size={15} color="var(--sky-400)" />
+            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#fff' }}>Field Map</span>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'center' }}>
+            {/* Aerial Canvas */}
+            <div style={{
+              width: '150px',
+              height: '190px',
+              borderRadius: '8px',
+              overflow: 'hidden',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              position: 'relative'
+            }}>
+              <canvas
+                ref={fieldMapCanvasRef}
+                width={150}
+                height={190}
+                style={{ width: '100%', height: '100%', display: 'block' }}
+              />
+            </div>
+
+            {/* Map Legend */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: '#0284c7', display: 'inline-block' }} />
+                <span style={{ color: '#fff', fontWeight: 600 }}>Robot</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
+                <span>Healthy</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#eab308', display: 'inline-block' }} />
+                <span>Warning</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444', display: 'inline-block' }} />
+                <span>Diseased</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#a855f7', display: 'inline-block' }} />
+                <span>Treated</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#94a3b8', display: 'inline-block' }} />
+                <span>Obstacle</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* ── Main Viewport & Simulation HUD Row ─────────────────────────────── */}
+      {/* ── 3. Bottom Row: Robot Controls, Robot Telemetry, Environmental Impact ── */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'minmax(0, 1.8fr) minmax(320px, 1fr)',
-        gap: '1.25rem',
+        gridTemplateColumns: '1fr 1.6fr 1.4fr',
+        gap: '0.85rem',
         width: '100%'
       }}>
-        {/* Left Column: 3D Farm Canvas & Floating Overlays */}
-        <div className="glass-panel" style={{ padding: '0', position: 'relative', overflow: 'hidden' }}>
-          {/* Camera View Switcher Bar */}
-          <div style={{
-            position: 'absolute',
-            top: '12px',
-            left: '12px',
-            zIndex: 10,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.35rem',
-            background: 'rgba(15, 23, 42, 0.85)',
-            backdropFilter: 'blur(8px)',
-            padding: '4px 8px',
-            borderRadius: '8px',
-            border: '1px solid rgba(255, 255, 255, 0.12)'
-          }}>
-            <span style={{ fontSize: '0.65rem', color: 'var(--text-dim)', fontWeight: 700, marginRight: '4px' }}>
-              CAMERA:
-            </span>
-            {([
-              { id: 'CHASE', label: 'Follow Rover' },
-              { id: 'OVERHEAD', label: 'Overhead Field' },
-              { id: 'ISOMETRIC', label: 'Orbit 3D' },
-              { id: 'BUMPER', label: 'FPV Bumper' }
-            ] as const).map(({ id, label }) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => handleSetCamera(id)}
-                style={{
-                  padding: '2px 8px',
-                  fontSize: '0.68rem',
-                  fontWeight: activeCamera === id ? 800 : 600,
-                  borderRadius: '5px',
-                  background: activeCamera === id ? 'var(--emerald-500)' : 'transparent',
-                  color: activeCamera === id ? '#05080f' : 'var(--text-muted)',
-                  border: 'none',
-                  cursor: 'pointer'
-                }}
-              >
-                {label}
-              </button>
-            ))}
+        {/* Card 5: Robot Controls (D-Pad & Pump / Relay) */}
+        <div className="glass-panel" style={{
+          padding: '0.85rem',
+          borderRadius: '14px',
+          border: '1px solid var(--border-subtle)',
+          background: 'rgba(11, 19, 32, 0.85)',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.45rem' }}>
+            <Compass size={15} color="var(--rose-400)" />
+            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#fff' }}>Robot Controls</span>
           </div>
 
-          {/* Top-Right Audio Mute & Telemetry Pill */}
-          <div style={{
-            position: 'absolute',
-            top: '12px',
-            right: '12px',
-            zIndex: 10,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem'
-          }}>
-            {/* Buzzer Sound Indicator */}
-            <button
-              type="button"
-              onClick={handleToggleMute}
-              title={isAudioMuted ? 'Unmute Obstacle Buzzer' : 'Mute Obstacle Buzzer'}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.35rem',
-                background: telemetry?.buzzerState === 'OBSTACLE'
-                  ? 'rgba(244, 63, 94, 0.3)'
-                  : (telemetry?.buzzerState === 'WARNING' ? 'rgba(245, 158, 11, 0.3)' : 'rgba(15, 23, 42, 0.85)'),
-                border: `1px solid ${telemetry?.buzzerState === 'OBSTACLE' ? 'var(--rose-500)' : (telemetry?.buzzerState === 'WARNING' ? 'var(--amber-500)' : 'rgba(255, 255, 255, 0.15)')}`,
-                borderRadius: '8px',
-                padding: '4px 8px',
-                color: '#fff',
-                fontSize: '0.68rem',
-                fontWeight: 700,
-                cursor: 'pointer'
-              }}
-            >
-              {isAudioMuted ? <VolumeX size={13} color="var(--text-muted)" /> : <Volume2 size={13} color={telemetry?.buzzerState !== 'OFF' ? 'var(--rose-400)' : 'var(--emerald-400)'} />}
-              <span>BUZZER: {isAudioMuted ? 'MUTED' : (telemetry?.buzzerState || 'OFF')}</span>
-            </button>
-          </div>
-
-          {/* Center Safety Stop Banner if triggered */}
-          {telemetry?.safetyStopActive && (
-            <div style={{
-              position: 'absolute',
-              top: '52px',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              zIndex: 10,
-              background: 'rgba(244, 63, 94, 0.9)',
-              backdropFilter: 'blur(10px)',
-              border: '1px solid #fff',
-              borderRadius: '8px',
-              padding: '6px 14px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              color: '#fff',
-              fontSize: '0.78rem',
-              fontWeight: 800,
-              boxShadow: '0 0 24px rgba(244, 63, 94, 0.7)'
-            }}>
-              <AlertTriangle size={16} color="#fff" />
-              <span>SAFETY STOP: CENTER OBSTACLE AHEAD (&lt; 25 cm)</span>
-              <button
-                type="button"
-                onClick={() => managerRef.current?.resetSafetyStop()}
-                style={{
-                  background: 'rgba(0,0,0,0.3)',
-                  border: '1px solid rgba(255,255,255,0.4)',
-                  color: '#fff',
-                  borderRadius: '4px',
-                  padding: '2px 6px',
-                  fontSize: '0.68rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  marginLeft: '6px'
-                }}
-              >
-                Clear
-              </button>
-            </div>
-          )}
-
-          {/* Bottom HUD Bar: Coordinates, Heading, Speed & Zone */}
-          <div style={{
-            position: 'absolute',
-            bottom: '12px',
-            left: '12px',
-            right: '12px',
-            zIndex: 10,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: '0.5rem',
-            pointerEvents: 'none'
-          }}>
-            <div style={{
-              background: 'rgba(15, 23, 42, 0.85)',
-              backdropFilter: 'blur(8px)',
-              border: '1px solid rgba(255, 255, 255, 0.12)',
-              borderRadius: '8px',
-              padding: '5px 10px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-              fontSize: '0.72rem'
-            }}>
-              <div>
-                <span style={{ color: 'var(--text-dim)' }}>POS: </span>
-                <span className="mono" style={{ color: '#fff', fontWeight: 800 }}>
-                  X: {telemetry?.position.x ?? 0}m · Z: {telemetry?.position.z ?? 0}m
-                </span>
-              </div>
-              <div style={{ borderLeft: '1px solid rgba(255,255,255,0.1)', paddingLeft: '8px' }}>
-                <span style={{ color: 'var(--text-dim)' }}>HEADING: </span>
-                <span className="mono" style={{ color: 'var(--emerald-400)', fontWeight: 800 }}>
-                  {telemetry?.headingDeg ?? 0}°
-                </span>
-              </div>
-              <div style={{ borderLeft: '1px solid rgba(255,255,255,0.1)', paddingLeft: '8px' }}>
-                <span style={{ color: 'var(--text-dim)' }}>PWM: </span>
-                <span className="mono" style={{ color: 'var(--sky-400)', fontWeight: 800 }}>
-                  {telemetry?.speedPwm ?? 160}
-                </span>
-              </div>
-            </div>
-
-            <div style={{
-              background: 'rgba(15, 23, 42, 0.85)',
-              backdropFilter: 'blur(8px)',
-              border: '1px solid rgba(255, 255, 255, 0.12)',
-              borderRadius: '8px',
-              padding: '5px 10px',
-              fontSize: '0.72rem'
-            }}>
-              <span style={{ color: 'var(--text-dim)' }}>FIELD ZONE: </span>
-              <span style={{ color: 'var(--emerald-400)', fontWeight: 800 }}>
-                {telemetry?.currentZone.name || 'Central Ridge'}
-              </span>
-            </div>
-          </div>
-
-          {/* Three.js Canvas Container */}
-          <div
-            ref={containerRef}
-            style={{
-              width: '100%',
-              height: '520px',
-              cursor: activeCamera === 'ISOMETRIC' || activeCamera === 'OVERHEAD' ? 'grab' : 'crosshair'
-            }}
-          />
-        </div>
-
-        {/* Right Column: Tactile Rover Controls & Tri-Zone Radar */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          
-          {/* Tactile D-Pad Rover Controls */}
-          <div className="glass-panel" style={{ padding: '1.1rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Compass size={17} color="var(--emerald-400)" />
-                <h3 style={{ fontSize: '0.92rem', fontWeight: 800, margin: 0, color: '#fff' }}>
-                  ROBOT MOBILITY CONTROLS
-                </h3>
-              </div>
-              <span style={{ fontSize: '0.65rem', color: 'var(--text-dim)' }}>
-                W / A / S / D or Click
-              </span>
-            </div>
-
-            {/* D-Pad Buttons Grid */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', margin: '0.5rem 0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', gap: '0.75rem' }}>
+            {/* D-Pad Buttons */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem' }}>
               <button
                 type="button"
                 onClick={() => handleMove('FORWARD')}
                 className="btn"
                 style={{
-                  width: '64px',
-                  height: '48px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
+                  width: '52px',
+                  height: '42px',
                   background: telemetry?.movement === 'FORWARD' ? 'var(--emerald-500)' : 'rgba(255,255,255,0.06)',
                   color: telemetry?.movement === 'FORWARD' ? '#05080f' : '#fff',
                   border: '1px solid rgba(255,255,255,0.12)',
-                  borderRadius: '10px'
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
                 }}
               >
-                <ArrowUp size={22} />
+                <ArrowUp size={20} />
               </button>
 
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <div style={{ display: 'flex', gap: '0.35rem' }}>
                 <button
                   type="button"
                   onClick={() => handleMove('LEFT')}
                   className="btn"
                   style={{
-                    width: '64px',
-                    height: '48px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
+                    width: '52px',
+                    height: '42px',
                     background: telemetry?.movement === 'LEFT' ? 'var(--emerald-500)' : 'rgba(255,255,255,0.06)',
                     color: telemetry?.movement === 'LEFT' ? '#05080f' : '#fff',
                     border: '1px solid rgba(255,255,255,0.12)',
-                    borderRadius: '10px'
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
                   }}
                 >
-                  <ArrowLeft size={22} />
+                  <ArrowLeft size={20} />
                 </button>
 
                 <button
@@ -571,18 +900,20 @@ export const SimulatedViewPage: React.FC = () => {
                   onClick={() => handleMove('STOP')}
                   className="btn"
                   style={{
-                    width: '64px',
-                    height: '48px',
+                    width: '68px',
+                    height: '42px',
+                    background: telemetry?.movement === 'STOP' ? 'rgba(244, 63, 94, 0.25)' : 'rgba(244, 63, 94, 0.15)',
+                    color: 'var(--rose-400)',
+                    border: '1px solid var(--rose-500)',
+                    borderRadius: '8px',
+                    fontWeight: 900,
+                    fontSize: '0.75rem',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    background: telemetry?.movement === 'STOP' ? 'rgba(244, 63, 94, 0.25)' : 'rgba(255,255,255,0.06)',
-                    color: telemetry?.movement === 'STOP' ? 'var(--rose-400)' : '#fff',
-                    border: '1px solid rgba(255,255,255,0.12)',
-                    borderRadius: '10px'
+                    justifyContent: 'center'
                   }}
                 >
-                  <Square size={20} />
+                  STOP
                 </button>
 
                 <button
@@ -590,18 +921,18 @@ export const SimulatedViewPage: React.FC = () => {
                   onClick={() => handleMove('RIGHT')}
                   className="btn"
                   style={{
-                    width: '64px',
-                    height: '48px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
+                    width: '52px',
+                    height: '42px',
                     background: telemetry?.movement === 'RIGHT' ? 'var(--emerald-500)' : 'rgba(255,255,255,0.06)',
                     color: telemetry?.movement === 'RIGHT' ? '#05080f' : '#fff',
                     border: '1px solid rgba(255,255,255,0.12)',
-                    borderRadius: '10px'
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
                   }}
                 >
-                  <ArrowRight size={22} />
+                  <ArrowRight size={20} />
                 </button>
               </div>
 
@@ -610,566 +941,327 @@ export const SimulatedViewPage: React.FC = () => {
                 onClick={() => handleMove('BACKWARD')}
                 className="btn"
                 style={{
-                  width: '64px',
-                  height: '48px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
+                  width: '52px',
+                  height: '42px',
                   background: telemetry?.movement === 'BACKWARD' ? 'var(--emerald-500)' : 'rgba(255,255,255,0.06)',
                   color: telemetry?.movement === 'BACKWARD' ? '#05080f' : '#fff',
                   border: '1px solid rgba(255,255,255,0.12)',
-                  borderRadius: '10px'
-                }}
-              >
-                <ArrowDown size={22} />
-              </button>
-            </div>
-
-            {/* Emergency STOP Button */}
-            <div style={{ marginTop: '0.85rem' }}>
-              <button
-                type="button"
-                onClick={() => managerRef.current?.emergencyStop()}
-                className="btn"
-                style={{
-                  width: '100%',
-                  padding: '0.55rem',
-                  background: 'linear-gradient(135deg, var(--rose-600), #9f1239)',
-                  color: '#fff',
-                  fontWeight: 800,
-                  fontSize: '0.78rem',
+                  borderRadius: '8px',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px',
-                  borderRadius: '8px',
-                  boxShadow: '0 0 15px rgba(244, 63, 94, 0.3)'
+                  justifyContent: 'center'
                 }}
               >
-                <ShieldAlert size={16} />
-                SIMULATOR EMERGENCY STOP
+                <ArrowDown size={20} />
               </button>
             </div>
-          </div>
 
-          {/* Tri-Zone Raycast Ultrasonic Radar */}
-          <div className="glass-panel" style={{ padding: '1.1rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Radio size={16} color="var(--sky-400)" />
-                <h3 style={{ fontSize: '0.90rem', fontWeight: 800, margin: 0, color: '#fff' }}>
-                  TRI-ZONE ULTRASONIC RADAR
-                </h3>
-              </div>
-              <span style={{ fontSize: '0.65rem', color: 'var(--text-dim)' }}>
-                Raycast 3D Distance
-              </span>
-            </div>
-
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(3, 1fr)',
-              gap: '8px',
-              textAlign: 'center'
-            }}>
-              {/* Left Sensor */}
+            {/* Actuator Indicators: Pump & Relay */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
               <div style={{
-                background: 'rgba(0,0,0,0.25)',
-                padding: '8px 4px',
+                background: telemetry?.pumpState === 'ON' ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255, 255, 255, 0.04)',
+                border: `1px solid ${telemetry?.pumpState === 'ON' ? 'var(--sky-400)' : 'rgba(255,255,255,0.08)'}`,
+                padding: '0.45rem 0.65rem',
                 borderRadius: '8px',
-                border: '1px solid rgba(255,255,255,0.08)'
-              }}>
-                <div style={{ fontSize: '0.62rem', color: 'var(--text-dim)', fontWeight: 700 }}>LEFT (-X)</div>
-                <div className="mono" style={{
-                  fontSize: '1.1rem',
-                  fontWeight: 800,
-                  color: (telemetry?.ultrasonic.left ?? 999) < SAFETY_THRESHOLDS.OBSTACLE_CM
-                    ? 'var(--rose-400)'
-                    : ((telemetry?.ultrasonic.left ?? 999) <= SAFETY_THRESHOLDS.WARNING_CM ? 'var(--amber-400)' : 'var(--emerald-400)')
-                }}>
-                  {telemetry?.ultrasonic.left ?? '--'}
-                  <span style={{ fontSize: '0.65rem' }}>cm</span>
-                </div>
-                <div style={{ fontSize: '0.58rem', fontWeight: 800, color: (telemetry?.ultrasonic.left ?? 999) < SAFETY_THRESHOLDS.OBSTACLE_CM ? 'var(--rose-400)' : 'var(--text-muted)' }}>
-                  {(telemetry?.ultrasonic.left ?? 999) < SAFETY_THRESHOLDS.OBSTACLE_CM ? 'OBSTACLE' : 'CLEAR'}
-                </div>
-              </div>
-
-              {/* Center Sensor */}
-              <div style={{
-                background: (telemetry?.ultrasonic.center ?? 999) < SAFETY_THRESHOLDS.OBSTACLE_CM
-                  ? 'rgba(244, 63, 94, 0.2)'
-                  : 'rgba(0,0,0,0.25)',
-                padding: '8px 4px',
-                borderRadius: '8px',
-                border: `1px solid ${(telemetry?.ultrasonic.center ?? 999) < SAFETY_THRESHOLDS.OBSTACLE_CM ? 'var(--rose-500)' : 'rgba(255,255,255,0.08)'}`
-              }}>
-                <div style={{ fontSize: '0.62rem', color: (telemetry?.ultrasonic.center ?? 999) < SAFETY_THRESHOLDS.OBSTACLE_CM ? 'var(--rose-400)' : 'var(--text-dim)', fontWeight: 800 }}>CENTER (+Z)</div>
-                <div className="mono" style={{
-                  fontSize: '1.1rem',
-                  fontWeight: 800,
-                  color: (telemetry?.ultrasonic.center ?? 999) < SAFETY_THRESHOLDS.OBSTACLE_CM
-                    ? 'var(--rose-400)'
-                    : ((telemetry?.ultrasonic.center ?? 999) <= SAFETY_THRESHOLDS.WARNING_CM ? 'var(--amber-400)' : 'var(--emerald-400)')
-                }}>
-                  {telemetry?.ultrasonic.center ?? '--'}
-                  <span style={{ fontSize: '0.65rem' }}>cm</span>
-                </div>
-                <div style={{ fontSize: '0.58rem', fontWeight: 800, color: (telemetry?.ultrasonic.center ?? 999) < SAFETY_THRESHOLDS.OBSTACLE_CM ? 'var(--rose-400)' : 'var(--text-muted)' }}>
-                  {(telemetry?.ultrasonic.center ?? 999) < SAFETY_THRESHOLDS.OBSTACLE_CM ? 'HARD STOP' : 'CLEAR'}
-                </div>
-              </div>
-
-              {/* Right Sensor */}
-              <div style={{
-                background: 'rgba(0,0,0,0.25)',
-                padding: '8px 4px',
-                borderRadius: '8px',
-                border: '1px solid rgba(255,255,255,0.08)'
-              }}>
-                <div style={{ fontSize: '0.62rem', color: 'var(--text-dim)', fontWeight: 700 }}>RIGHT (+X)</div>
-                <div className="mono" style={{
-                  fontSize: '1.1rem',
-                  fontWeight: 800,
-                  color: (telemetry?.ultrasonic.right ?? 999) < SAFETY_THRESHOLDS.OBSTACLE_CM
-                    ? 'var(--rose-400)'
-                    : ((telemetry?.ultrasonic.right ?? 999) <= SAFETY_THRESHOLDS.WARNING_CM ? 'var(--amber-400)' : 'var(--emerald-400)')
-                }}>
-                  {telemetry?.ultrasonic.right ?? '--'}
-                  <span style={{ fontSize: '0.65rem' }}>cm</span>
-                </div>
-                <div style={{ fontSize: '0.58rem', fontWeight: 800, color: (telemetry?.ultrasonic.right ?? 999) < SAFETY_THRESHOLDS.OBSTACLE_CM ? 'var(--rose-400)' : 'var(--text-muted)' }}>
-                  {(telemetry?.ultrasonic.right ?? 999) < SAFETY_THRESHOLDS.OBSTACLE_CM ? 'OBSTACLE' : 'CLEAR'}
-                </div>
-              </div>
-            </div>
-          </div>
-
-        </div>
-      </div>
-
-      {/* ── Middle Row: AI Crop Pathology Inspection & Location Telemetry ─── */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'minmax(0, 1.25fr) minmax(0, 1fr)',
-        gap: '1.25rem',
-        width: '100%'
-      }}>
-        {/* AI Camera Crop Inspection & Farmer Approval Gate */}
-        <div className="glass-panel" style={{ padding: '1.25rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
-              <Scan size={18} color="var(--emerald-400)" />
-              <h3 style={{ fontSize: '0.95rem', fontWeight: 800, margin: 0, color: '#fff' }}>
-                AI CROP PATHOLOGY &amp; FARMER APPROVAL GATE
-              </h3>
-            </div>
-            <span className="status-pill status-online" style={{ fontSize: '0.62rem', padding: '0.15rem 0.5rem' }}>
-              VIRTUAL FRUSTUM ACTIVE
-            </span>
-          </div>
-
-          {targetPlant ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-              {/* Target Plant Banner */}
-              <div style={{
-                background: 'rgba(0,0,0,0.3)',
-                padding: '0.75rem 1rem',
-                borderRadius: '8px',
-                border: '1px solid rgba(255,255,255,0.1)',
                 display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
+                alignItems: 'center',
+                gap: '0.45rem',
+                fontSize: '0.72rem',
+                fontWeight: 700
               }}>
-                <div>
-                  <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#fff' }}>
-                    {targetPlant.id} — {targetPlant.variety}
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                    Row {targetPlant.row} · Position ({targetPlant.position.x}m, {targetPlant.position.z}m)
-                  </div>
-                </div>
-
-                <div style={{ textAlign: 'right' }}>
-                  <span className="status-pill" style={{
-                    background: targetPlant.state === 'DISEASED'
-                      ? 'rgba(244, 63, 94, 0.2)'
-                      : (targetPlant.state === 'TREATED' ? 'rgba(6, 182, 212, 0.2)' : 'rgba(16, 185, 129, 0.2)'),
-                    color: targetPlant.state === 'DISEASED'
-                      ? 'var(--rose-400)'
-                      : (targetPlant.state === 'TREATED' ? 'var(--cyan-400)' : 'var(--emerald-400)'),
-                    border: `1px solid ${targetPlant.state === 'DISEASED' ? 'var(--rose-500)' : (targetPlant.state === 'TREATED' ? 'var(--cyan-500)' : 'var(--emerald-500)')}`,
-                    fontWeight: 800,
-                    fontSize: '0.72rem'
-                  }}>
-                    {targetPlant.state}
-                  </span>
-                  <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', marginTop: '2px' }}>
-                    Health Score: {targetPlant.healthScore}%
-                  </div>
-                </div>
+                <Droplet size={14} color={telemetry?.pumpState === 'ON' ? 'var(--sky-400)' : 'var(--rose-400)'} />
+                <span>Pump {telemetry?.pumpState || 'OFF'}</span>
               </div>
 
-              {/* Disease Diagnosis & Treatment Prescription */}
-              {targetPlant.disease && (
-                <div style={{
-                  background: 'rgba(244, 63, 94, 0.08)',
-                  border: '1px solid rgba(244, 63, 94, 0.25)',
-                  borderRadius: '8px',
-                  padding: '0.85rem'
-                }}>
-                  <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--rose-400)', marginBottom: '4px' }}>
-                    DIAGNOSIS: {targetPlant.disease.name} ({Math.round(targetPlant.disease.confidence * 100)}% Confidence)
-                  </div>
-                  <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                    <strong>Symptoms:</strong> {targetPlant.disease.symptoms}
-                  </div>
-                  <div style={{ fontSize: '0.74rem', color: '#fff', marginBottom: '8px' }}>
-                    <strong>Prescription:</strong> {targetPlant.disease.recommendedTreatment}
-                  </div>
-                  <div style={{ display: 'flex', gap: '1rem', fontSize: '0.72rem', color: 'var(--text-dim)' }}>
-                    <span>Product: <strong style={{ color: '#fff' }}>{targetPlant.disease.chemicalProduct}</strong></span>
-                    <span>Dose: <strong style={{ color: 'var(--cyan-400)' }}>{targetPlant.disease.recommendedDoseMl} mL</strong></span>
-                    <span>Inventory: <strong style={{ color: 'var(--emerald-400)' }}>AVAILABLE (1000 mL)</strong></span>
-                  </div>
-                </div>
-              )}
-
-              {/* Farmer Approval Action Box */}
-              {targetPlant.state === 'DISEASED' && (
-                <div style={{
-                  background: 'rgba(16, 185, 129, 0.08)',
-                  border: '1px solid rgba(16, 185, 129, 0.3)',
-                  borderRadius: '8px',
-                  padding: '0.85rem',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: '0.75rem'
-                }}>
-                  <div>
-                    <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#fff' }}>
-                      Farmer Safety Interlock: Approval Required
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                      Robot will never spray automatically. Authorize micro-pulse spray.
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleApproveSpray}
-                    disabled={telemetry?.sprayActive}
-                    className="btn btn-primary"
-                    style={{
-                      padding: '0.5rem 1rem',
-                      fontWeight: 800,
-                      fontSize: '0.78rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.45rem'
-                    }}
-                  >
-                    <Sparkles size={15} />
-                    {telemetry?.sprayActive ? 'SPRAYING IN PROGRESS...' : 'FARMER APPROVE & EXECUTE SPRAY'}
-                  </button>
-                </div>
-              )}
-
-              {targetPlant.state === 'TREATED' && (
-                <div style={{
-                  background: 'rgba(6, 182, 212, 0.1)',
-                  border: '1px solid var(--cyan-500)',
-                  borderRadius: '8px',
-                  padding: '0.75rem 1rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.65rem'
-                }}>
-                  <CheckCircle2 size={18} color="var(--cyan-400)" />
-                  <div>
-                    <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--cyan-400)' }}>
-                      TREATMENT EXECUTED &amp; RECORDED
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                      Targeted micro-pulse application verified. Status updated to TREATED. Follow-up evaluation scheduled in 4 days.
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div style={{
-              padding: '2.5rem 1rem',
-              textAlign: 'center',
-              color: 'var(--text-dim)',
-              fontSize: '0.8rem'
-            }}>
-              <Camera size={28} color="var(--text-dim)" style={{ margin: '0 auto 8px auto', display: 'block' }} />
-              <div>No crop plant currently in inspection frame.</div>
-              <div style={{ fontSize: '0.72rem', marginTop: '4px' }}>
-                Drive the rover near a crop row or click <strong>Preset 3 (Diseased Crop)</strong> to focus on a target plant.
+              <div style={{
+                background: telemetry?.relayState === 'ON' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(255, 255, 255, 0.04)',
+                border: `1px solid ${telemetry?.relayState === 'ON' ? 'var(--amber-400)' : 'rgba(255,255,255,0.08)'}`,
+                padding: '0.45rem 0.65rem',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.45rem',
+                fontSize: '0.72rem',
+                fontWeight: 700
+              }}>
+                <Zap size={14} color={telemetry?.relayState === 'ON' ? 'var(--amber-400)' : 'var(--amber-400)'} />
+                <span>Relay {telemetry?.relayState || 'OFF'}</span>
               </div>
             </div>
-          )}
+          </div>
         </div>
 
-        {/* Spatial Soil Moisture & Agronomic Telemetry */}
-        <div className="glass-panel" style={{ padding: '1.25rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
-              <Droplet size={18} color="var(--sky-400)" />
-              <h3 style={{ fontSize: '0.95rem', fontWeight: 800, margin: 0, color: '#fff' }}>
-                SPATIAL SOIL &amp; MICROCLIMATE TELEMETRY
-              </h3>
-            </div>
-            <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>
-              Location Dependent
-            </span>
+        {/* Card 6: Robot Telemetry (Live) */}
+        <div className="glass-panel" style={{
+          padding: '0.85rem',
+          borderRadius: '14px',
+          border: '1px solid var(--border-subtle)',
+          background: 'rgba(11, 19, 32, 0.85)',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.45rem' }}>
+            <Activity size={15} color="var(--emerald-400)" />
+            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#fff' }}>Robot Telemetry (Live)</span>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.45rem', textAlign: 'center' }}>
             {/* Soil Moisture */}
-            <div style={{
-              background: 'rgba(0,0,0,0.25)',
-              padding: '10px',
-              borderRadius: '8px',
-              border: '1px solid rgba(255,255,255,0.08)'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)', fontWeight: 700 }}>SOIL MOISTURE</span>
-                <Droplet size={14} color="var(--sky-400)" />
+            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.5rem 0.35rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ fontSize: '0.62rem', color: 'var(--text-dim)', fontWeight: 700 }}>Soil Moisture</div>
+              <div style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--emerald-400)', margin: '2px 0' }}>
+                {(telemetry?.soilMoisturePct || 42.0).toFixed(0)}%
               </div>
-              <div className="mono" style={{ fontSize: '1.35rem', fontWeight: 800, color: '#fff' }}>
-                {telemetry?.soilMoisturePct.toFixed(1) ?? '--'}%
+              <div style={{ width: '80%', height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', margin: '4px auto 2px auto', overflow: 'hidden' }}>
+                <div style={{ width: `${telemetry?.soilMoisturePct || 42}%`, height: '100%', background: 'var(--emerald-500)' }} />
               </div>
-              <div style={{ fontSize: '0.68rem', color: telemetry?.currentZone.soilCondition === 'DRY' ? 'var(--amber-400)' : 'var(--emerald-400)', fontWeight: 700 }}>
-                Status: {telemetry?.currentZone.soilCondition || 'OPTIMAL'}
-              </div>
+              <div style={{ fontSize: '0.58rem', color: 'var(--emerald-400)', fontWeight: 700 }}>Normal</div>
             </div>
 
-            {/* NPK Values */}
-            <div style={{
-              background: 'rgba(0,0,0,0.25)',
-              padding: '10px',
-              borderRadius: '8px',
-              border: '1px solid rgba(255,255,255,0.08)'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)', fontWeight: 700 }}>NPK PROFILE</span>
-                <Activity size={14} color="var(--pink-400)" />
-              </div>
-              <div className="mono" style={{ fontSize: '1.15rem', fontWeight: 800, color: '#fff' }}>
-                N:{telemetry?.npk.n} · P:{telemetry?.npk.p} · K:{telemetry?.npk.k}
-              </div>
-              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                mg/kg (Location Calibrated)
+            {/* NPK */}
+            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.5rem 0.35rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ fontSize: '0.62rem', color: 'var(--text-dim)', fontWeight: 700 }}>NPK</div>
+              <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#fff', marginTop: '4px', textAlign: 'left', paddingLeft: '6px' }}>
+                <div>N: <strong style={{ color: 'var(--emerald-400)' }}>{telemetry?.npk.n || 48}</strong></div>
+                <div>P: <strong style={{ color: 'var(--cyan-400)' }}>{telemetry?.npk.p || 26}</strong></div>
+                <div>K: <strong style={{ color: 'var(--amber-400)' }}>{telemetry?.npk.k || 41}</strong></div>
               </div>
             </div>
 
             {/* Temperature */}
-            <div style={{
-              background: 'rgba(0,0,0,0.25)',
-              padding: '10px',
-              borderRadius: '8px',
-              border: '1px solid rgba(255,255,255,0.08)'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)', fontWeight: 700 }}>DHT22 TEMP</span>
-                <Thermometer size={14} color="var(--amber-400)" />
+            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.5rem 0.35rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ fontSize: '0.62rem', color: 'var(--text-dim)', fontWeight: 700 }}>Temperature</div>
+              <div style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--sky-400)', margin: '4px 0' }}>
+                {(telemetry?.dht22.temperature || 29.4).toFixed(1)}°C
               </div>
-              <div className="mono" style={{ fontSize: '1.35rem', fontWeight: 800, color: '#fff' }}>
-                {telemetry?.dht22.temperature.toFixed(1) ?? '--'}°C
-              </div>
-              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                Microclimate Ambient
-              </div>
+              <div style={{ fontSize: '0.58rem', color: 'var(--text-muted)' }}>Microclimate</div>
             </div>
 
             {/* Humidity */}
-            <div style={{
-              background: 'rgba(0,0,0,0.25)',
-              padding: '10px',
-              borderRadius: '8px',
-              border: '1px solid rgba(255,255,255,0.08)'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)', fontWeight: 700 }}>DHT22 HUMIDITY</span>
-                <Zap size={14} color="var(--sky-400)" />
+            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.5rem 0.35rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ fontSize: '0.62rem', color: 'var(--text-dim)', fontWeight: 700 }}>Humidity</div>
+              <div style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--sky-400)', margin: '4px 0' }}>
+                {(telemetry?.dht22.humidity || 72.8).toFixed(1)}%
               </div>
-              <div className="mono" style={{ fontSize: '1.35rem', fontWeight: 800, color: '#fff' }}>
-                {telemetry?.dht22.humidity.toFixed(1) ?? '--'}%
+              <div style={{ fontSize: '0.58rem', color: 'var(--text-muted)' }}>RH Relative</div>
+            </div>
+
+            {/* IMU (Pitch/Roll) */}
+            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.5rem 0.35rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ fontSize: '0.62rem', color: 'var(--text-dim)', fontWeight: 700 }}>IMU (Pitch/Roll)</div>
+              <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#fff', marginTop: '6px' }}>
+                <div>P: <strong style={{ color: 'var(--amber-400)' }}>{(telemetry?.mpu6050.pitch_deg || 1.2).toFixed(1)}°</strong></div>
+                <div>R: <strong style={{ color: 'var(--amber-400)' }}>{(telemetry?.mpu6050.roll_deg || -0.6).toFixed(1)}°</strong></div>
               </div>
-              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                Relative Humidity
-              </div>
+              <div style={{ fontSize: '0.56rem', color: 'var(--text-muted)', marginTop: '2px' }}>MPU6050 Live</div>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* ── Bottom Row: Environmental & Carbon Impact Engine ───────────────── */}
-      <div className="glass-panel" style={{ padding: '1.25rem' }}>
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '1rem',
-          flexWrap: 'wrap',
-          gap: '0.75rem'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
-            <Leaf size={18} color="var(--emerald-400)" />
-            <h3 style={{ fontSize: '0.98rem', fontWeight: 800, margin: 0, color: '#fff' }}>
-              ENVIRONMENTAL &amp; CARBON FOOTPRINT IMPACT
-            </h3>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span className="status-pill" style={{
-              background: 'rgba(16, 185, 129, 0.15)',
-              color: 'var(--emerald-400)',
-              border: '1px solid rgba(16, 185, 129, 0.35)',
-              fontSize: '0.64rem',
-              padding: '0.15rem 0.5rem',
-              fontWeight: 800
-            }}>
-              TRANSPARENT LIFE CYCLE ESTIMATE
-            </span>
-            <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>
-              (All figures labeled SIMULATION / ESTIMATE)
-            </span>
-          </div>
-        </div>
-
-        {/* Side-by-Side Comparison Metrics Grid */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-          gap: '12px'
-        }}>
-          {/* Chemical Volume Savings Card */}
-          <div style={{
-            background: 'rgba(0,0,0,0.25)',
-            padding: '12px',
-            borderRadius: '10px',
-            border: '1px solid rgba(255,255,255,0.08)'
-          }}>
-            <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', fontWeight: 700, marginBottom: '4px' }}>
-              CHEMICAL VOLUME SAVED
-            </div>
-            <div className="mono" style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--emerald-400)' }}>
-              {impact?.volumeSavedMl.toLocaleString() ?? '5,358'} <span style={{ fontSize: '0.8rem' }}>mL</span>
-            </div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              {impact?.percentageReduction ?? 99.2}% reduction vs. conventional blanket broadcast ({impact?.conventionalBaselineMl.toLocaleString() ?? '5,400'} mL baseline).
-            </div>
-          </div>
-
-          {/* Targeted vs Spared Plants */}
-          <div style={{
-            background: 'rgba(0,0,0,0.25)',
-            padding: '12px',
-            borderRadius: '10px',
-            border: '1px solid rgba(255,255,255,0.08)'
-          }}>
-            <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', fontWeight: 700, marginBottom: '4px' }}>
-              CROP CANOPY TARGETING
-            </div>
-            <div className="mono" style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--cyan-400)' }}>
-              {impact?.plantsTreatedCount ?? 0} <span style={{ fontSize: '0.8rem' }}>Treated</span>
-            </div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              <strong>{impact?.nonTargetPlantsSparedCount ?? 24}</strong> non-target healthy crops spared from chemical runoff.
-            </div>
-          </div>
-
-          {/* Robot Electrical Energy */}
-          <div style={{
-            background: 'rgba(0,0,0,0.25)',
-            padding: '12px',
-            borderRadius: '10px',
-            border: '1px solid rgba(255,255,255,0.08)'
-          }}>
-            <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', fontWeight: 700, marginBottom: '4px' }}>
-              ROBOT ENERGY USE
-            </div>
-            <div className="mono" style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--sky-400)' }}>
-              {impact?.robotEnergyKwh.toFixed(4) ?? '0.0012'} <span style={{ fontSize: '0.8rem' }}>kWh</span>
-            </div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              Low-power 12V LiFePO4 drivetrain with pulse diaphragm actuation.
-            </div>
-          </div>
-
-          {/* Estimated Avoided CO2e */}
-          <div style={{
-            background: 'rgba(16, 185, 129, 0.08)',
-            padding: '12px',
-            borderRadius: '10px',
-            border: '1px solid rgba(16, 185, 129, 0.3)'
-          }}>
-            <div style={{ fontSize: '0.68rem', color: 'var(--emerald-400)', fontWeight: 800, marginBottom: '4px' }}>
-              ESTIMATED AVOIDED CO2e
-            </div>
-            <div className="mono" style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--emerald-400)' }}>
-              {impact?.estimatedAvoidedCO2eKg.toFixed(3) ?? '0.061'} <span style={{ fontSize: '0.8rem' }}>kg CO2e</span>
-            </div>
-            <div style={{ fontSize: '0.70rem', color: 'var(--text-dim)', marginTop: '4px' }}>
-              Baseline: {impact?.conventionalFootprintKgCO2e ?? '0.062'} kg · AgriGuard: {impact?.agriguardFootprintKgCO2e ?? '0.001'} kg (Estimate).
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Chronological Event Log ─────────────────────────────────────────── */}
-      <div className="glass-panel" style={{ padding: '1rem 1.25rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-            <Clock size={15} color="var(--emerald-400)" />
-            <h4 style={{ fontSize: '0.85rem', fontWeight: 800, margin: 0, color: '#fff' }}>
-              SIMULATION CHRONOLOGICAL EVENT AUDIT LOG
-            </h4>
-          </div>
-          <span style={{ fontSize: '0.65rem', color: 'var(--text-dim)' }}>
-            Latest 50 events
-          </span>
-        </div>
-
-        <div style={{
-          maxHeight: '130px',
-          overflowY: 'auto',
-          background: 'rgba(0,0,0,0.3)',
-          borderRadius: '6px',
-          padding: '8px',
-          fontFamily: 'monospace',
-          fontSize: '0.72rem',
+        {/* Card 7: Environmental Impact (Simulation) */}
+        <div className="glass-panel" style={{
+          padding: '0.85rem',
+          borderRadius: '14px',
+          border: '1px solid var(--border-subtle)',
+          background: 'rgba(11, 19, 32, 0.85)',
           display: 'flex',
           flexDirection: 'column',
-          gap: '4px'
+          justifyContent: 'space-between'
         }}>
-          {logs.length > 0 ? (
-            logs.map((log) => (
-              <div key={log.id} style={{ display: 'flex', gap: '8px' }}>
-                <span style={{ color: 'var(--text-dim)' }}>[{log.timestamp}]</span>
-                <span style={{
-                  fontWeight: 700,
-                  color: log.type === 'ALERT'
-                    ? 'var(--rose-400)'
-                    : (log.type === 'SAFETY' ? 'var(--amber-400)' : (log.type === 'TREATMENT' ? 'var(--cyan-400)' : (log.type === 'DETECTION' ? 'var(--emerald-400)' : 'var(--sky-400)')))
-                }}>
-                  [{log.type}]
-                </span>
-                <span style={{ color: 'var(--text-secondary)' }}>{log.message}</span>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.45rem' }}>
+              <Leaf size={15} color="var(--emerald-400)" />
+              <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#fff' }}>Environmental Impact (Simulation)</span>
+            </div>
+
+            {/* Comparison Table */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.2fr', gap: '0.5rem', fontSize: '0.68rem', marginBottom: '0.5rem' }}>
+              <div>
+                <div style={{ color: 'var(--text-dim)', fontWeight: 700, marginBottom: '2px' }}>Conventional Approach</div>
+                <div style={{ color: 'var(--text-muted)' }}>Treatment Volume: <strong style={{ color: '#fff' }}>1000 mL</strong></div>
+                <div style={{ color: 'var(--text-muted)' }}>Area Treated: <strong style={{ color: '#fff' }}>100 m²</strong></div>
+                <div style={{ color: 'var(--text-muted)' }}>Estimated CO2e: <strong style={{ color: 'var(--rose-400)' }}>1.84 kg</strong></div>
               </div>
-            ))
-          ) : (
-            <div style={{ color: 'var(--text-dim)' }}>Waiting for simulation events...</div>
-          )}
+
+              <div>
+                <div style={{ color: 'var(--emerald-400)', fontWeight: 700, marginBottom: '2px' }}>AgriGuard (Current Run)</div>
+                <div style={{ color: 'var(--text-muted)' }}>Treatment Volume: <strong style={{ color: 'var(--emerald-400)' }}>240 mL</strong></div>
+                <div style={{ color: 'var(--text-muted)' }}>Area Treated: <strong style={{ color: 'var(--emerald-400)' }}>18 m²</strong></div>
+                <div style={{ color: 'var(--text-muted)' }}>Robot Energy: <strong style={{ color: 'var(--sky-400)' }}>0.18 kWh</strong></div>
+                <div style={{ color: 'var(--text-muted)' }}>Estimated CO2e: <strong style={{ color: 'var(--emerald-400)' }}>0.62 kg</strong></div>
+              </div>
+            </div>
+          </div>
+
+          {/* Highlight Banner at Bottom */}
+          <div style={{
+            background: 'rgba(16, 185, 129, 0.12)',
+            border: '1px solid rgba(16, 185, 129, 0.35)',
+            borderRadius: '8px',
+            padding: '0.4rem 0.65rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.74rem', fontWeight: 800, color: '#fff' }}>
+              <Leaf size={15} color="var(--emerald-400)" />
+              <span>Estimated Avoided CO2e</span>
+            </div>
+            <div style={{ fontSize: '0.95rem', fontWeight: 900, color: 'var(--emerald-400)' }}>
+              1.22 kg
+            </div>
+          </div>
         </div>
       </div>
 
+      {/* ── 4. Farmer Approval Modal Dialog ─────────────────────────────────── */}
+      {isApprovalModalOpen && targetPlant && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.75)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 100
+        }}>
+          <div className="glass-panel" style={{
+            width: '520px',
+            padding: '1.5rem',
+            borderRadius: '16px',
+            border: '1px solid rgba(16, 185, 129, 0.4)',
+            background: '#0b1320',
+            boxShadow: '0 0 35px rgba(16, 185, 129, 0.25)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', marginBottom: '0.85rem' }}>
+              <Sparkles size={20} color="var(--emerald-400)" />
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#fff', margin: 0 }}>
+                Farmer Approval Gate: Precision Spray
+              </h3>
+            </div>
+
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '1rem', lineHeight: 1.4 }}>
+              AgriGuard AI will <strong>never spray chemicals automatically</strong> without human-in-the-loop verification. Please authorize targeted pulse spray execution.
+            </p>
+
+            <div style={{ background: 'rgba(255,255,255,0.04)', padding: '0.85rem', borderRadius: '10px', marginBottom: '1rem' }}>
+              <div style={{ fontSize: '0.76rem', color: '#fff', fontWeight: 700, marginBottom: '0.35rem' }}>Target Specifications:</div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Plant Target: <strong style={{ color: '#fff' }}>{targetPlant.id}</strong></div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Identified Pathology: <strong style={{ color: 'var(--amber-400)' }}>{targetPlant.disease?.name}</strong></div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Recommended Dosage: <strong style={{ color: 'var(--emerald-400)' }}>{targetPlant.disease?.recommendedDoseMl || 40} mL</strong> micro-pulse</div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Formulation: <strong style={{ color: 'var(--sky-400)' }}>{targetPlant.disease?.chemicalProduct || 'Copper Hydroxide'}</strong></div>
+            </div>
+
+            <div style={{ marginBottom: '1.25rem' }}>
+              <label style={{ fontSize: '0.72rem', color: 'var(--text-dim)', fontWeight: 700, display: 'block', marginBottom: '0.35rem' }}>
+                Authorized Operator Name:
+              </label>
+              <input
+                type="text"
+                value={operatorName}
+                onChange={(e) => setOperatorName(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.55rem 0.75rem',
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  borderRadius: '8px',
+                  color: '#fff',
+                  fontSize: '0.80rem',
+                  outline: 'none'
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => setIsApprovalModalOpen(false)}
+                className="btn btn-outline"
+                style={{ padding: '0.55rem 1rem', fontSize: '0.78rem' }}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleApproveSpray}
+                className="btn btn-primary"
+                style={{ padding: '0.55rem 1.25rem', fontSize: '0.78rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.45rem' }}
+              >
+                <Sparkles size={15} />
+                AUTHORIZE & SPRAY
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 5. Plant Details Modal Dialog ───────────────────────────────────── */}
+      {isDetailsModalOpen && selectedPlant && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.75)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 100
+        }}>
+          <div className="glass-panel" style={{
+            width: '480px',
+            padding: '1.5rem',
+            borderRadius: '16px',
+            border: '1px solid rgba(255,255,255,0.15)',
+            background: '#0b1320'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                <Leaf size={18} color="var(--emerald-400)" />
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#fff', margin: 0 }}>
+                  {selectedPlant.id} Diagnostics
+                </h3>
+              </div>
+              <span className={`status-pill ${selectedPlant.state === 'DISEASED' ? 'status-danger' : selectedPlant.state === 'WARNING' ? 'status-warning' : 'status-online'}`} style={{ fontSize: '0.64rem', padding: '0.15rem 0.5rem', fontWeight: 800 }}>
+                {selectedPlant.state}
+              </span>
+            </div>
+
+            <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '0.45rem', marginBottom: '1.25rem' }}>
+              <div>Crop Variety: <strong style={{ color: '#fff' }}>{selectedPlant.variety} ({selectedPlant.cropType})</strong></div>
+              <div>Field Coordinate: <strong style={{ color: '#fff' }}>Row {selectedPlant.row}, Stalk {selectedPlant.col} (X: {selectedPlant.position.x}m, Z: {selectedPlant.position.z}m)</strong></div>
+              <div>Foliar Health Score: <strong style={{ color: 'var(--emerald-400)' }}>{selectedPlant.healthScore}%</strong></div>
+              {selectedPlant.disease && (
+                <>
+                  <div>Pathology: <strong style={{ color: 'var(--amber-400)' }}>{selectedPlant.disease.name}</strong> ({selectedPlant.disease.pathogen})</div>
+                  <div>Symptoms: <span style={{ color: 'var(--text-muted)' }}>{selectedPlant.disease.symptoms}</span></div>
+                  <div>Recommended Dose: <strong style={{ color: 'var(--cyan-400)' }}>{selectedPlant.disease.recommendedDoseMl} mL</strong> of {selectedPlant.disease.chemicalProduct}</div>
+                </>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => setIsDetailsModalOpen(false)}
+                className="btn btn-outline"
+                style={{ padding: '0.45rem 1rem', fontSize: '0.78rem' }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

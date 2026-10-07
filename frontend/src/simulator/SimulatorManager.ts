@@ -126,6 +126,10 @@ export class SimulatorManager {
     this.onLogsUpdate = onLogs;
   }
 
+  public getDetectedPlant(): FarmPlant | null {
+    return this.detectedPlant;
+  }
+
   // ───────────────────────────────────────────────────────────────────────────
   // User Movement Controls (Identical to Real Hardware Interface)
   // ───────────────────────────────────────────────────────────────────────────
@@ -275,7 +279,11 @@ export class SimulatorManager {
     const ultrasonic = this.scene.computeUltrasonicDistances();
 
     // 2. Kinematic & Collision Step
-    const safetyStop = this.scene.updateKinematics(deltaSec, ultrasonic.centerCm);
+    const { safetyStop, blocked } = this.scene.updateKinematics(deltaSec, ultrasonic.centerCm);
+    if (blocked) {
+      this.currentMovement = 'STOP';
+      this.addLog('NAV', 'Path blocked: Robot cannot drive through crop rows or solid obstacles.');
+    }
     if (safetyStop && !this.safetyStopActive) {
       this.safetyStopActive = true;
       this.currentMovement = 'STOP';
@@ -391,40 +399,40 @@ export class SimulatorManager {
     switch (preset) {
       case 'NORMAL_FIELD':
         this.scene.robotX = 0.0;
-        this.scene.robotZ = -6.5;
+        this.scene.robotZ = 4.0;
         this.scene.robotHeading = 0.0;
         this.addLog('INFO', 'Scenario loaded: NORMAL FIELD. Clear central crop row path.');
         break;
 
       case 'OBSTACLE_AHEAD':
-        // Place rover 0.95m directly in front of Rock Obstacle at Z=2.5
+        // Place rover in lane approaching granite boulder
         this.scene.robotX = 0.0;
-        this.scene.robotZ = 1.35;
+        this.scene.robotZ = -1.0;
         this.scene.robotHeading = 0.0;
-        this.addLog('SAFETY', 'Scenario loaded: OBSTACLE AHEAD. Rover positioned directly facing rock obstacle.');
+        this.addLog('SAFETY', 'Scenario loaded: OBSTACLE AHEAD. Rover approaching field boulder on right.');
         break;
 
       case 'DISEASED_ZONE':
-        // Place rover directly facing Plant #003 (Early Blight)
-        this.scene.robotX = -3.2;
-        this.scene.robotZ = -1.2;
-        this.scene.robotHeading = -Math.PI / 2; // Facing Left toward Row 1
+        // Place rover positioned in center lane between Plant #003 (Left) and Boulder (Right) - exactly matching reference image!
+        this.scene.robotX = 0.0;
+        this.scene.robotZ = 0.0;
+        this.scene.robotHeading = 0.0;
         this.addLog('DETECTION', 'Scenario loaded: DISEASED ZONE. Camera oriented at Plant #003 (Early Blight).');
         break;
 
       case 'DRY_SOIL_ZONE':
-        // Move rover into West Bed (<25% moisture)
-        this.scene.robotX = -5.0;
-        this.scene.robotZ = -3.0;
+        // Move rover into Southern Arid sector (<25% moisture)
+        this.scene.robotX = -6.0;
+        this.scene.robotZ = 10.0;
         this.scene.robotHeading = 0.0;
         this.addLog('INFO', 'Scenario loaded: DRY SOIL ZONE. Positioned in West Bed (24.8% moisture).');
         break;
 
       case 'PRECISION_SPRAY':
-        // Positioned at Plant #003, primed for approval
-        this.scene.robotX = -3.2;
-        this.scene.robotZ = -1.2;
-        this.scene.robotHeading = -Math.PI / 2;
+        // Positioned at Plant #003, primed for farmer approval
+        this.scene.robotX = 0.0;
+        this.scene.robotZ = 0.0;
+        this.scene.robotHeading = 0.0;
         this.addLog('TREATMENT', 'Scenario loaded: PRECISION SPRAY. Verified treatment ready for farmer authorization.');
         break;
 
