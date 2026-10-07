@@ -27,7 +27,7 @@ This is a **real working hardware project**.
             LAPTOP
       ┌────────────────────────────────────────────────────────┐
       │ • OpenCV Hardware Camera Pipeline (MJPEG)              │
-      │ • Real AI Disease Detection & Lesion Quantification     │
+      │ • Real AI Disease Detection & Lesion Quantification    │
       │ • Plant Health Index & Stress Correlation Engine       │
       │ • ICAR/USDA Verified Treatment Decision Engine         │
       │ • Chemical Tank Inventory Management                   │
@@ -44,7 +44,7 @@ This is a **real working hardware project**.
       │ • RS485 Modbus RTU NPK Probe Driver (Hardware Serial2) │
       │ • Capacitive Soil Moisture ADC Driver                  │
       │ • DHT22 Microclimate Temperature & Humidity Driver     │
-      │ • HC-SR04 Ultrasonic Distance Sensor Driver           │
+      │ • HC-SR04 Ultrasonic Distance Sensor Driver            │
       │ • MPU6050 6-DOF IMU I2C Driver                         │
       │ • IRLZ44N MOSFET 12V Diaphragm Pump Actuator           │
       │ • IRLZ44N MOSFET 12V Solenoid Shutoff Valve Actuator   │
