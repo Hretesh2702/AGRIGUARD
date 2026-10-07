@@ -694,37 +694,41 @@ export function createAgriGuardRobot(): RobotModelRefs {
     return { mesh, mat };
   }
 
-  // (A) HC-SR04 Mounted on the Front-Right Vertical PVC Leg (Matching Photo 2!)
-  const legRightUS = createHCSR04();
-  legRightUS.position.set(trackX, 0.95, baseZ + 0.04);
-  chassisGroup.add(legRightUS);
+  // (A) HC-SR04 Mounted on the Right PVC Frame (Facing RIGHT along +X)
+  const rightUS = createHCSR04();
+  rightUS.position.set(trackX + 0.03, 1.10, 0.0);
+  rightUS.rotation.y = Math.PI / 2; // Pointing outward to the RIGHT (+X)
+  chassisGroup.add(rightUS);
 
-  // Black Zip Ties fastening the sensor to the vertical PVC pipe!
-  const legTieTop = createZipTie(pipeRadius * 1.35, true);
-  legTieTop.position.set(trackX, 1.02, baseZ);
-  legTieTop.rotation.x = Math.PI / 2;
-  chassisGroup.add(legTieTop);
-
-  const legTieBot = createZipTie(pipeRadius * 1.35, true);
-  legTieBot.position.set(trackX, 0.88, baseZ);
-  legTieBot.rotation.x = Math.PI / 2;
-  chassisGroup.add(legTieBot);
+  // Black Zip Ties fastening the right sensor to the vertical PVC pipe
+  const rightTie = createZipTie(pipeRadius * 1.35, true);
+  rightTie.position.set(trackX, 1.10, 0.0);
+  rightTie.rotation.y = Math.PI / 2;
+  chassisGroup.add(rightTie);
 
   const rightConeData = createRangeCone();
-  legRightUS.add(rightConeData.mesh);
+  rightUS.add(rightConeData.mesh);
 
-  // (B) HC-SR04 Mounted Centrally Under the Front Foam Tray Floor (Facing Forward)
+  // (B) HC-SR04 Mounted Centrally Under the Front Foam Tray Floor (Facing FORWARD along +Z)
   const centerUS = createHCSR04();
-  centerUS.position.set(0, trayFloorY - 0.08, trayLength / 2 + 0.02);
+  centerUS.position.set(0, trayFloorY - 0.08, trayLength / 2 + 0.04);
+  centerUS.rotation.y = 0; // Pointing straight FORWARD (+Z)
   chassisGroup.add(centerUS);
 
   const centerConeData = createRangeCone();
   centerUS.add(centerConeData.mesh);
 
-  // (C) HC-SR04 Mounted on Left PVC Leg/Frame
+  // (C) HC-SR04 Mounted on the Left PVC Frame (Facing LEFT along -X)
   const leftUS = createHCSR04();
-  leftUS.position.set(-trackX, 0.95, baseZ + 0.04);
+  leftUS.position.set(-trackX - 0.03, 1.10, 0.0);
+  leftUS.rotation.y = -Math.PI / 2; // Pointing outward to the LEFT (-X)
   chassisGroup.add(leftUS);
+
+  // Black Zip Ties fastening the left sensor to the vertical PVC pipe
+  const leftTie = createZipTie(pipeRadius * 1.35, true);
+  leftTie.position.set(-trackX, 1.10, 0.0);
+  leftTie.rotation.y = -Math.PI / 2;
+  chassisGroup.add(leftTie);
 
   const leftConeData = createRangeCone();
   leftUS.add(leftConeData.mesh);
@@ -911,19 +915,19 @@ export function createAgriGuardRobot(): RobotModelRefs {
 
   const wheelFL = createWheel();
   wheelFL.position.set(-wheelTrackX, wheelAxleY, baseZ);
-  rootGroup.add(wheelFL);
+  chassisGroup.add(wheelFL);
 
   const wheelFR = createWheel();
   wheelFR.position.set(wheelTrackX, wheelAxleY, baseZ);
-  rootGroup.add(wheelFR);
+  chassisGroup.add(wheelFR);
 
   const wheelRL = createWheel();
   wheelRL.position.set(-wheelTrackX, wheelAxleY, -baseZ);
-  rootGroup.add(wheelRL);
+  chassisGroup.add(wheelRL);
 
   const wheelRR = createWheel();
   wheelRR.position.set(wheelTrackX, wheelAxleY, -baseZ);
-  rootGroup.add(wheelRR);
+  chassisGroup.add(wheelRR);
 
   // Motor Axle Shafts extending from PVC elbows to wheels
   const axleGeom = new THREE.CylinderGeometry(0.025, 0.025, 0.22, 12);

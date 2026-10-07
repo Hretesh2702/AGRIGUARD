@@ -223,18 +223,9 @@ export class TwinSceneManager {
       this.rightDist = 999;
     }
 
-    // MPU6050 Orientation Tilt (smoothed)
-    const mpu = telemetry.mpu6050 || telemetry.imu;
-    if (this.isRobotConnected && mpu) {
-      const p = mpu.pitch_deg != null ? Number(mpu.pitch_deg) : 0;
-      const r = mpu.roll_deg != null ? Number(mpu.roll_deg) : 0;
-      // Convert degrees to radians, clamp to ±20 degrees max
-      this.targetPitch = THREE.MathUtils.degToRad(THREE.MathUtils.clamp(p, -20, 20));
-      this.targetRoll = THREE.MathUtils.degToRad(THREE.MathUtils.clamp(r, -20, 20));
-    } else {
-      this.targetPitch = 0;
-      this.targetRoll = 0;
-    }
+    // MPU6050 Orientation — Keep digital model standing straight and level on its wheels
+    this.targetPitch = 0;
+    this.targetRoll = 0;
 
     // Pump / Spray state
     const pState = telemetry.pump?.state || (telemetry.actuators?.pump_active ? 'ON' : 'OFF');
@@ -320,10 +311,10 @@ export class TwinSceneManager {
       }
     }
 
-    // 3. Smooth Chassis IMU Orientation Tilting
+    // 3. Keep Chassis Standing Straight and Level
     const chassis = this.robot.chassisGroup;
-    chassis.rotation.x = THREE.MathUtils.lerp(chassis.rotation.x, this.targetPitch, 0.07);
-    chassis.rotation.z = THREE.MathUtils.lerp(chassis.rotation.z, -this.targetRoll, 0.07);
+    chassis.rotation.x = 0;
+    chassis.rotation.z = 0;
 
     // 4. Update Ultrasonic Proximity Cones
     this.updateUltrasonicCone(
