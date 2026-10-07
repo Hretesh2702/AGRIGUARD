@@ -9,6 +9,7 @@ import { DiagnosticsPage } from './pages/DiagnosticsPage';
 import { SensorsPage } from './pages/SensorsPage';
 import { DeviceHealthPage } from './pages/DeviceHealthPage';
 import { SystemLogsPage } from './pages/SystemLogsPage';
+import { SimulatedViewPage } from './simulator/SimulatedViewPage';
 import { ConnectPanel } from './components/ConnectPanel';
 import { AgriGuardTwin } from './digitalTwin/AgriGuardTwin';
 import { AIDetection, TreatmentDecision } from './types';
@@ -35,7 +36,7 @@ import {
 } from 'lucide-react';
 
 // ─── Page meta ─────────────────────────────────────────────────────────────
-type TabId = 'dashboard' | 'remote' | 'diagnostics' | 'heatmap' | 'sensors' | 'devices' | 'logs';
+type TabId = 'dashboard' | 'remote' | 'diagnostics' | 'heatmap' | 'sensors' | 'devices' | 'logs' | 'simulation';
 
 const PAGE_META: Record<TabId, { title: string; section: string }> = {
   dashboard:   { title: 'Dashboard',           section: 'Overview' },
@@ -45,6 +46,7 @@ const PAGE_META: Record<TabId, { title: string; section: string }> = {
   devices:     { title: 'Device Health',        section: 'Hardware' },
   diagnostics: { title: 'Hardware Diagnostics', section: 'System' },
   logs:        { title: 'System Logs',          section: 'System' },
+  simulation:  { title: 'Simulation',           section: 'Simulation' },
 };
 
 // ─── App ────────────────────────────────────────────────────────────────────
@@ -307,6 +309,11 @@ export const App: React.FC = () => {
           {/* ━━━ LOGS ━━━ */}
           {activeTab === 'logs' && (
             <SystemLogsPage />
+          )}
+
+          {/* ━━━ SIMULATION ━━━ */}
+          {activeTab === 'simulation' && (
+            <SimulatedViewPage />
           )}
 
           {/* ━━━ FIELD MONITOR (Camera) ━━━ */}

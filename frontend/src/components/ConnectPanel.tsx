@@ -12,10 +12,7 @@ import {
   Sparkles,
   AlertTriangle,
   Radio,
-  ExternalLink,
-  ShieldCheck,
-  ChevronDown,
-  ChevronUp
+  ExternalLink
 } from 'lucide-react';
 import {
   connectionManager,
@@ -48,7 +45,6 @@ export const ConnectPanel: React.FC<ConnectPanelProps> = ({ telemetry, onConnect
   // Bluetooth state
   const hasWebBluetooth = typeof navigator !== 'undefined' && 'bluetooth' in navigator;
   const isSecureContext = typeof window !== 'undefined' ? window.isSecureContext : true;
-  const [showStartupGuide, setShowStartupGuide] = useState<boolean>(true);
 
   // Subscribe to ConnectionManager status updates
   useEffect(() => {
@@ -697,80 +693,6 @@ export const ConnectPanel: React.FC<ConnectPanelProps> = ({ telemetry, onConnect
           <span>{statusMessage}</span>
         </div>
       )}
-
-      {/* ── 8-Step Startup Procedure Guide ──────────────────────────────────── */}
-      <div style={{
-        marginTop: '1rem',
-        background: 'rgba(0, 0, 0, 0.25)',
-        border: '1px solid var(--border-subtle)',
-        borderRadius: '10px',
-        overflow: 'hidden'
-      }}>
-        <button
-          type="button"
-          onClick={() => setShowStartupGuide(!showStartupGuide)}
-          style={{
-            width: '100%',
-            padding: '0.65rem 0.9rem',
-            background: 'transparent',
-            border: 'none',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            color: 'var(--text-muted)',
-            cursor: 'pointer',
-            fontSize: '0.75rem',
-            fontWeight: 700
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-            <ShieldCheck size={14} color="var(--emerald-400)" />
-            <span>Official 8-Step Robot Startup Procedure</span>
-          </div>
-          {showStartupGuide ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-        </button>
-
-        {showStartupGuide && (
-          <div style={{ padding: '0.5rem 0.9rem 0.85rem 0.9rem', borderTop: '1px solid rgba(255, 255, 255, 0.05)' }}>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-              gap: '0.5rem',
-              fontSize: '0.72rem',
-              color: 'var(--text-secondary)'
-            }}>
-              {[
-                { step: 'Step 1', title: 'Power on robot', desc: 'Engage master 12V LiPo battery switch and ensure physical E-Stop is released.' },
-                { step: 'Step 2', title: 'ESP32 starts Wi-Fi/BLE', desc: `AP SSID "${HARDWARE_CONFIG.WIFI.AP_SSID}" broadcast begins within 2 seconds.` },
-                { step: 'Step 3', title: 'Connect to robot Wi-Fi', desc: `Connect laptop to "${HARDWARE_CONFIG.WIFI.AP_SSID}" (Pass: ${HARDWARE_CONFIG.WIFI.AP_PASSWORD}).` },
-                { step: 'Step 4', title: 'Open AgriGuard', desc: 'Open AgriGuard dashboard in browser (http://localhost:8000 or IP).' },
-                { step: 'Step 5', title: 'Select REAL HARDWARE', desc: 'Click "REAL HARDWARE" mode toggle button above.' },
-                { step: 'Step 6', title: 'Connect Wi-Fi or BLE', desc: 'Click "CONNECT" for 192.168.4.1 or "CONNECT BLUETOOTH".' },
-                { step: 'Step 7', title: 'Verify sensor telemetry', desc: 'Confirm Ultrasonic (L/C/R), Soil Moisture, DHT22, and MPU6050 are live.' },
-                { step: 'Step 8', title: 'Test STOP', desc: 'Verify emergency STOP button safely halts all actuators.' }
-              ].map((s) => (
-                <div
-                  key={s.step}
-                  style={{
-                    background: 'rgba(255, 255, 255, 0.02)',
-                    padding: '0.45rem 0.6rem',
-                    borderRadius: '6px',
-                    border: '1px solid rgba(255, 255, 255, 0.04)'
-                  }}
-                >
-                  <div style={{ color: 'var(--emerald-400)', fontWeight: 800, fontSize: '0.68rem', marginBottom: '0.1rem' }}>
-                    {s.step}: {s.title}
-                  </div>
-                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                    {s.desc}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
     </div>
   );
 };

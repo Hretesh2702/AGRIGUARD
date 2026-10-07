@@ -677,6 +677,31 @@ export function createAgriGuardRobot(): RobotModelRefs {
     return usGroup;
   }
 
+  // Helper: Saddle Mounting Bracket for attaching sensors directly to round PVC pipes
+  function createPvcSensorBracket(pipeRad: number): THREE.Group {
+    const bracketGroup = new THREE.Group();
+    const bracketMat = new THREE.MeshStandardMaterial({
+      color: 0x1e293b,
+      roughness: 0.8,
+      metalness: 0.2,
+    });
+
+    // Curved saddle block that hugs the cylindrical pipe surface
+    const saddleGeom = new THREE.CylinderGeometry(pipeRad * 1.18, pipeRad * 1.18, 0.22, 14, 1, false, 0, Math.PI);
+    const saddle = new THREE.Mesh(saddleGeom, bracketMat);
+    saddle.rotation.y = Math.PI / 2;
+    saddle.position.set(0, 0, -pipeRad * 0.15);
+    bracketGroup.add(saddle);
+
+    // Front flat mounting flange for HC-SR04 PCB
+    const flangeGeom = new THREE.BoxGeometry(0.32, 0.16, 0.018);
+    const flange = new THREE.Mesh(flangeGeom, bracketMat);
+    flange.position.set(0, 0, pipeRad * 0.45);
+    bracketGroup.add(flange);
+
+    return bracketGroup;
+  }
+
   // Ultrasonic Range Indicator Cone Factory (Visual Radar)
   function createRangeCone(): { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial } {
     const coneGeom = new THREE.ConeGeometry(0.65, 2.5, 16, 1, true);
@@ -694,37 +719,120 @@ export function createAgriGuardRobot(): RobotModelRefs {
     return { mesh, mat };
   }
 
-  // (A) HC-SR04 Mounted on the Front-Right Vertical PVC Leg (Matching Photo 2!)
-  const legRightUS = createHCSR04();
-  legRightUS.position.set(trackX, 0.95, baseZ + 0.04);
-  chassisGroup.add(legRightUS);
+  const midRailY = trayFloorY - 0.03; // Exact height of the horizontal PVC rails (1.42m)
 
-  // Black Zip Ties fastening the sensor to the vertical PVC pipe!
-  const legTieTop = createZipTie(pipeRadius * 1.35, true);
-  legTieTop.position.set(trackX, 1.02, baseZ);
-  legTieTop.rotation.x = Math.PI / 2;
-  chassisGroup.add(legTieTop);
+  // ───────────────────────────────────────────────────────────────────────────
+  // (A) HC-SR04 Mounted on the Right Horizontal PVC Rail (Facing RIGHT along +X)
+  // ───────────────────────────────────────────────────────────────────────────
+  // 1. Black mounting saddle bracket hugging rightMidRail pipe
+  const rightBracket = createPvcSensorBracket(pipeRadius);
+  rightBracket.position.set(trackX, midRailY, 0.0);
+  rightBracket.rotation.y = Math.PI / 2;
+  chassisGroup.add(rightBracket);
 
-  const legTieBot = createZipTie(pipeRadius * 1.35, true);
-  legTieBot.position.set(trackX, 0.88, baseZ);
-  legTieBot.rotation.x = Math.PI / 2;
-  chassisGroup.add(legTieBot);
+  // 2. HC-SR04 Sensor seated flush on the bracket
+  const rightUS = createHCSR04();
+  rightUS.position.set(trackX + pipeRadius + 0.02, midRailY, 0.0);
+  rightUS.rotation.y = Math.PI / 2; // Pointing outward to the RIGHT (+X)
+  chassisGroup.add(rightUS);
+
+  // 3. Black Zip Ties fastening the bracket and sensor tightly around rightMidRail
+  [-0.10, 0.10].forEach((zOffset) => {
+    const tie = createZipTie(pipeRadius * 1.25, true);
+    tie.position.set(trackX, midRailY, zOffset);
+    chassisGroup.add(tie);
+  });
+
+  // 4. Jumper wires from sensor to electronics tray
+  chassisGroup.add(
+    createWire(
+      [
+        new THREE.Vector3(trackX + 0.01, midRailY, 0.0),
+        new THREE.Vector3(trackX - 0.03, midRailY + 0.10, 0.05),
+        new THREE.Vector3(trayWidth / 2 - 0.05, trayFloorY + 0.12, 0.1),
+        new THREE.Vector3(0.1, deckY + 0.05, 0.2),
+      ],
+      0x3b82f6
+    )
+  );
 
   const rightConeData = createRangeCone();
-  legRightUS.add(rightConeData.mesh);
+  rightUS.add(rightConeData.mesh);
 
-  // (B) HC-SR04 Mounted Centrally Under the Front Foam Tray Floor (Facing Forward)
+  // ───────────────────────────────────────────────────────────────────────────
+  // (B) HC-SR04 Mounted Centrally on the Front Horizontal PVC Cross Pipe (Facing FORWARD along +Z)
+  // ───────────────────────────────────────────────────────────────────────────
+  // 1. Black mounting saddle bracket hugging midFrontCross pipe
+  const centerBracket = createPvcSensorBracket(pipeRadius);
+  centerBracket.position.set(0.0, midRailY, baseZ);
+  centerBracket.rotation.z = Math.PI / 2;
+  centerBracket.rotation.y = 0;
+  chassisGroup.add(centerBracket);
+
+  // 2. HC-SR04 Sensor seated flush on the bracket
   const centerUS = createHCSR04();
-  centerUS.position.set(0, trayFloorY - 0.08, trayLength / 2 + 0.02);
+  centerUS.position.set(0.0, midRailY, baseZ + pipeRadius + 0.02);
+  centerUS.rotation.y = 0; // Pointing straight FORWARD (+Z)
   chassisGroup.add(centerUS);
+
+  // 3. Black Zip Ties fastening the bracket and sensor tightly around midFrontCross
+  [-0.10, 0.10].forEach((xOffset) => {
+    const tie = createZipTie(pipeRadius * 1.25, true);
+    tie.rotation.y = Math.PI / 2;
+    tie.position.set(xOffset, midRailY, baseZ);
+    chassisGroup.add(tie);
+  });
+
+  // 4. Jumper wires from front sensor into the electronics tray
+  chassisGroup.add(
+    createWire(
+      [
+        new THREE.Vector3(0.0, midRailY, baseZ + 0.01),
+        new THREE.Vector3(0.0, midRailY + 0.12, baseZ - 0.04),
+        new THREE.Vector3(0.0, trayFloorY + 0.12, trayLength / 2 - 0.08),
+        new THREE.Vector3(-0.15, deckY + 0.05, 0.25),
+      ],
+      0x10b981
+    )
+  );
 
   const centerConeData = createRangeCone();
   centerUS.add(centerConeData.mesh);
 
-  // (C) HC-SR04 Mounted on Left PVC Leg/Frame
+  // ───────────────────────────────────────────────────────────────────────────
+  // (C) HC-SR04 Mounted on the Left Horizontal PVC Rail (Facing LEFT along -X)
+  // ───────────────────────────────────────────────────────────────────────────
+  // 1. Black mounting saddle bracket hugging leftMidRail pipe
+  const leftBracket = createPvcSensorBracket(pipeRadius);
+  leftBracket.position.set(-trackX, midRailY, 0.0);
+  leftBracket.rotation.y = -Math.PI / 2;
+  chassisGroup.add(leftBracket);
+
+  // 2. HC-SR04 Sensor seated flush on the bracket
   const leftUS = createHCSR04();
-  leftUS.position.set(-trackX, 0.95, baseZ + 0.04);
+  leftUS.position.set(-trackX - pipeRadius - 0.02, midRailY, 0.0);
+  leftUS.rotation.y = -Math.PI / 2; // Pointing outward to the LEFT (-X)
   chassisGroup.add(leftUS);
+
+  // 3. Black Zip Ties fastening the bracket and sensor tightly around leftMidRail
+  [-0.10, 0.10].forEach((zOffset) => {
+    const tie = createZipTie(pipeRadius * 1.25, true);
+    tie.position.set(-trackX, midRailY, zOffset);
+    chassisGroup.add(tie);
+  });
+
+  // 4. Jumper wires from left sensor into the electronics tray
+  chassisGroup.add(
+    createWire(
+      [
+        new THREE.Vector3(-trackX - 0.01, midRailY, 0.0),
+        new THREE.Vector3(-trackX + 0.03, midRailY + 0.10, 0.05),
+        new THREE.Vector3(-trayWidth / 2 + 0.05, trayFloorY + 0.12, 0.1),
+        new THREE.Vector3(-0.1, deckY + 0.05, 0.2),
+      ],
+      0x8b5cf6
+    )
+  );
 
   const leftConeData = createRangeCone();
   leftUS.add(leftConeData.mesh);
@@ -911,19 +1019,19 @@ export function createAgriGuardRobot(): RobotModelRefs {
 
   const wheelFL = createWheel();
   wheelFL.position.set(-wheelTrackX, wheelAxleY, baseZ);
-  rootGroup.add(wheelFL);
+  chassisGroup.add(wheelFL);
 
   const wheelFR = createWheel();
   wheelFR.position.set(wheelTrackX, wheelAxleY, baseZ);
-  rootGroup.add(wheelFR);
+  chassisGroup.add(wheelFR);
 
   const wheelRL = createWheel();
   wheelRL.position.set(-wheelTrackX, wheelAxleY, -baseZ);
-  rootGroup.add(wheelRL);
+  chassisGroup.add(wheelRL);
 
   const wheelRR = createWheel();
   wheelRR.position.set(wheelTrackX, wheelAxleY, -baseZ);
-  rootGroup.add(wheelRR);
+  chassisGroup.add(wheelRR);
 
   // Motor Axle Shafts extending from PVC elbows to wheels
   const axleGeom = new THREE.CylinderGeometry(0.025, 0.025, 0.22, 12);
