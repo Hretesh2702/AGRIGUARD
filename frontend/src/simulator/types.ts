@@ -94,6 +94,7 @@ export interface SimulatorTelemetry {
   relayState: 'OFF' | 'ON';
   sprayActive: boolean;
   sprayTargetPlantId: string | null;
+  detectedPlant?: FarmPlant | null;
 }
 
 export interface CarbonImpactModel {

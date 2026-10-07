@@ -73,6 +73,7 @@ export const SimulatedViewPage: React.FC = () => {
   const [simSpeed, setSimSpeed] = useState<number>(1.0);
   const [isAudioMuted, setIsAudioMuted] = useState<boolean>(false);
   const [operatorName, setOperatorName] = useState<string>('Swayam-Lead');
+  const [cameraMode, setCameraMode] = useState<SimCameraMode>('FOLLOW');
 
   // Modals & Panels
   const [isApprovalModalOpen, setIsApprovalModalOpen] = useState<boolean>(false);
@@ -288,6 +289,16 @@ export const SimulatedViewPage: React.FC = () => {
     managerRef.current?.resetField();
   };
 
+  // Camera Perspective Management
+  const handleSelectCameraMode = (mode: SimCameraMode) => {
+    setCameraMode(mode);
+    sceneRef.current?.setCameraMode(mode);
+  };
+
+  const handleResetCamera = () => {
+    sceneRef.current?.resetCameraView();
+  };
+
   // Farmer Approval Spray Execution
   const handleApproveSpray = () => {
     if (!managerRef.current) return;
@@ -297,8 +308,8 @@ export const SimulatedViewPage: React.FC = () => {
     }
   };
 
-  // Target plant acquired by camera
-  const targetPlant = managerRef.current?.getDetectedPlant() || sceneRef.current?.plants.find((p) => p.state === 'DISEASED') || null;
+  // Target plant dynamically acquired by AI camera inspection
+  const targetPlant = telemetry?.detectedPlant ?? managerRef.current?.getDetectedPlant() ?? null;
 
   // Environmental Metrics
   const envImpact = managerRef.current?.getEnvironmentalImpact() || {
@@ -425,6 +436,61 @@ export const SimulatedViewPage: React.FC = () => {
               ))}
             </div>
           </div>
+
+          {/* Camera Perspective Mode Pills */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            <span style={{ fontSize: '0.74rem', color: 'var(--text-dim)', fontWeight: 600 }}>Camera:</span>
+            <div style={{ display: 'flex', background: 'rgba(0,0,0,0.4)', padding: '2px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
+              {[
+                { id: 'FOLLOW', label: 'Follow' },
+                { id: 'FREE', label: 'Free' },
+                { id: 'CHASE', label: 'Chase' },
+                { id: 'OVERHEAD', label: 'Top-Down' },
+                { id: 'ISOMETRIC', label: 'Iso' },
+              ].map((cam) => (
+                <button
+                  key={cam.id}
+                  type="button"
+                  onClick={() => handleSelectCameraMode(cam.id as SimCameraMode)}
+                  style={{
+                    padding: '0.2rem 0.5rem',
+                    fontSize: '0.70rem',
+                    fontWeight: 700,
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: cameraMode === cam.id ? 'var(--sky-500)' : 'transparent',
+                    color: cameraMode === cam.id ? '#05080f' : 'var(--text-muted)',
+                    cursor: 'pointer'
+                  }}
+                  title={cam.id === 'FOLLOW' ? 'Follow rover maintaining your custom orbit angle' : cam.id === 'FREE' ? 'Free orbit camera stays stationary in field' : cam.label}
+                >
+                  {cam.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Reset Camera Button */}
+          <button
+            type="button"
+            onClick={handleResetCamera}
+            className="btn btn-outline"
+            style={{
+              padding: '0.4rem 0.65rem',
+              fontSize: '0.76rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              borderRadius: '8px',
+              border: '1px solid rgba(255, 255, 255, 0.15)',
+              color: '#fff',
+              fontWeight: 600
+            }}
+            title="Reset 3D camera to elevated crop row perspective"
+          >
+            <Camera size={13} />
+            <span>Reset Cam</span>
+          </button>
 
           {/* Reset Field Button */}
           <button
@@ -688,28 +754,36 @@ export const SimulatedViewPage: React.FC = () => {
                   width: '64px',
                   height: '64px',
                   borderRadius: '8px',
-                  background: 'linear-gradient(135deg, #166534, #14532d)',
+                  background: targetPlant.state === 'DISEASED'
+                    ? 'linear-gradient(135deg, #7f1d1d, #450a0a)'
+                    : targetPlant.state === 'WARNING'
+                    ? 'linear-gradient(135deg, #78350f, #451a03)'
+                    : targetPlant.state === 'TREATED'
+                    ? 'linear-gradient(135deg, #581c87, #3b0764)'
+                    : 'linear-gradient(135deg, #166534, #14532d)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   flexShrink: 0,
-                  border: '1px solid rgba(34, 197, 94, 0.3)',
+                  border: `1px solid ${targetPlant.state === 'DISEASED' ? '#ef4444' : targetPlant.state === 'WARNING' ? '#f59e0b' : targetPlant.state === 'TREATED' ? '#a855f7' : '#22c55e'}`,
                   overflow: 'hidden'
                 }}>
-                  <Leaf size={32} color="#86efac" />
+                  <Leaf size={32} color={targetPlant.state === 'DISEASED' ? '#fca5a5' : targetPlant.state === 'WARNING' ? '#fde047' : targetPlant.state === 'TREATED' ? '#d8b4fe' : '#86efac'} />
                 </div>
 
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '0.80rem', fontWeight: 800, color: '#fff' }}>Plant Detected</div>
-                  <div style={{ fontSize: '0.70rem', color: 'var(--text-muted)' }}>Crop: {targetPlant.cropType}</div>
-                  <div style={{ fontSize: '0.70rem', color: 'var(--amber-400)', fontWeight: 600 }}>
-                    Disease: {targetPlant.disease?.name || 'Early Symptoms'}
+                  <div style={{ fontSize: '0.80rem', fontWeight: 800, color: '#fff' }}>
+                    {targetPlant.id} (Row {targetPlant.row})
+                  </div>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{targetPlant.variety}</div>
+                  <div style={{ fontSize: '0.70rem', color: targetPlant.state === 'DISEASED' ? 'var(--rose-400)' : targetPlant.state === 'WARNING' ? 'var(--amber-400)' : targetPlant.state === 'TREATED' ? 'var(--purple-400)' : 'var(--emerald-400)', fontWeight: 700 }}>
+                    {targetPlant.disease?.name || (targetPlant.state === 'HEALTHY' ? 'Healthy Canopy' : 'Target Acquired')}
                   </div>
                   <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>
-                    Confidence: {(targetPlant.disease?.confidence ? targetPlant.disease.confidence * 100 : 92.4).toFixed(1)}%
+                    Confidence: {(targetPlant.disease?.confidence ? targetPlant.disease.confidence * 100 : 94.2).toFixed(1)}%
                   </div>
                   <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>
-                    Health Score: {targetPlant.healthScore}
+                    Health Score: <strong style={{ color: targetPlant.healthScore > 80 ? 'var(--emerald-400)' : targetPlant.healthScore > 50 ? 'var(--amber-400)' : 'var(--rose-400)' }}>{targetPlant.healthScore}%</strong>
                   </div>
                 </div>
               </div>
@@ -737,30 +811,118 @@ export const SimulatedViewPage: React.FC = () => {
                     color: '#fff'
                   }}
                 >
-                  View Details
+                  Diagnostics
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => setIsApprovalModalOpen(true)}
-                  className="btn btn-primary"
-                  style={{
-                    flex: 1,
-                    padding: '0.4rem 0.5rem',
-                    fontSize: '0.72rem',
-                    fontWeight: 800,
-                    borderRadius: '6px'
-                  }}
-                >
-                  Request Treatment
-                </button>
+                {targetPlant.state === 'TREATED' ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="btn btn-outline"
+                    style={{
+                      flex: 1,
+                      padding: '0.4rem 0.5rem',
+                      fontSize: '0.70rem',
+                      fontWeight: 700,
+                      borderRadius: '6px',
+                      color: 'var(--purple-300)',
+                      borderColor: 'rgba(168, 85, 247, 0.4)',
+                      background: 'rgba(168, 85, 247, 0.12)'
+                    }}
+                  >
+                    ✓ Treated
+                  </button>
+                ) : targetPlant.state === 'HEALTHY' ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="btn btn-outline"
+                    style={{
+                      flex: 1,
+                      padding: '0.4rem 0.5rem',
+                      fontSize: '0.70rem',
+                      fontWeight: 700,
+                      borderRadius: '6px',
+                      color: 'var(--emerald-400)',
+                      borderColor: 'rgba(34, 197, 94, 0.3)',
+                      background: 'rgba(34, 197, 94, 0.08)'
+                    }}
+                  >
+                    ✓ Safe
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsApprovalModalOpen(true)}
+                    className="btn btn-primary"
+                    style={{
+                      flex: 1,
+                      padding: '0.4rem 0.5rem',
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      borderRadius: '6px'
+                    }}
+                  >
+                    Request Spray
+                  </button>
+                )}
               </div>
             </div>
           ) : (
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textAlign: 'center', padding: '1rem 0' }}>
-              Orient rover camera towards a crop row to inspect target plant.
+            <div style={{ textAlign: 'center', padding: '0.65rem 0.25rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', color: 'var(--emerald-400)', fontWeight: 800, fontSize: '0.78rem', marginBottom: '0.35rem' }}>
+                <Scan size={16} />
+                <span>AI Canopy Vision Active</span>
+              </div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginBottom: '0.75rem', lineHeight: 1.35 }}>
+                Scanning rows. Drive along crop furrows or steer towards canopy to inspect foliage.
+              </div>
+              <button
+                type="button"
+                onClick={() => managerRef.current?.targetNearestPlant()}
+                className="btn btn-outline"
+                style={{
+                  fontSize: '0.70rem',
+                  padding: '0.35rem 0.75rem',
+                  borderRadius: '6px',
+                  color: '#fff',
+                  borderColor: 'rgba(255,255,255,0.2)',
+                  fontWeight: 600,
+                  width: '100%'
+                }}
+              >
+                🎯 Acquire Nearest Crop Plant
+              </button>
             </div>
           )}
+        </div>
+
+        {/* Subtle Floating Camera Interaction Guide */}
+        <div style={{
+          position: 'absolute',
+          bottom: '16px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'rgba(11, 19, 32, 0.75)',
+          backdropFilter: 'blur(8px)',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          borderRadius: '20px',
+          padding: '0.3rem 0.85rem',
+          fontSize: '0.66rem',
+          color: 'var(--text-muted)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.6rem',
+          pointerEvents: 'none',
+          zIndex: 9
+        }}>
+          <span>🖱️ <strong style={{ color: '#fff' }}>Left-Drag</strong> Orbit</span>
+          <span>•</span>
+          <span><strong style={{ color: '#fff' }}>Right-Drag</strong> Pan</span>
+          <span>•</span>
+          <span><strong style={{ color: '#fff' }}>Scroll</strong> Zoom</span>
+          <span>•</span>
+          <span style={{ color: 'var(--emerald-400)' }}>Camera angle stays fixed</span>
         </div>
 
         {/* Card 4: Top-Right Field Map (2D Aerial crop row grid & robot cone) */}
@@ -1249,7 +1411,7 @@ export const SimulatedViewPage: React.FC = () => {
               )}
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.65rem' }}>
               <button
                 type="button"
                 onClick={() => setIsDetailsModalOpen(false)}
@@ -1258,6 +1420,21 @@ export const SimulatedViewPage: React.FC = () => {
               >
                 Close
               </button>
+
+              {(selectedPlant.state === 'DISEASED' || selectedPlant.state === 'WARNING') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsDetailsModalOpen(false);
+                    setIsApprovalModalOpen(true);
+                  }}
+                  className="btn btn-primary"
+                  style={{ padding: '0.45rem 1rem', fontSize: '0.78rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                >
+                  <Sparkles size={14} />
+                  Authorize Spray
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -20,7 +20,7 @@ import { createAgriGuardRobot, RobotModelRefs } from '../digitalTwin/RobotGeomet
 import { FarmPlant, FieldZone, ObstacleObject, PlantHealthState } from './types';
 import { SAFETY_THRESHOLDS } from '../digitalTwin/types';
 
-export type SimCameraMode = 'CHASE' | 'OVERHEAD' | 'ISOMETRIC' | 'BUMPER';
+export type SimCameraMode = 'FOLLOW' | 'CHASE' | 'FREE' | 'OVERHEAD' | 'ISOMETRIC' | 'BUMPER';
 
 export interface RaycastSensorDistances {
   leftCm: number;
@@ -70,9 +70,18 @@ export class FarmScene {
   public wheelAngleLeft = 0.0;
   public wheelAngleRight = 0.0;
 
-  // Camera Management
-  private cameraMode: SimCameraMode = 'CHASE';
+  // Camera Management & Smooth Relative Follow Tracking
+  public cameraMode: SimCameraMode = 'FOLLOW';
   public followRobot = true;
+  public prevRobotX = 0.0;
+  public prevRobotZ = 2.0;
+  public isUserInteracting = false;
+
+  // 3D AI Target Inspection Reticle (AR Marker over detected plant)
+  private targetReticleGroup!: THREE.Group;
+  private reticleRingMesh!: THREE.Mesh;
+  private reticleBrackets!: THREE.Group;
+  private reticleMat!: THREE.MeshBasicMaterial;
 
   // Raycasting & Ultrasonic Radar Beams
   private raycaster = new THREE.Raycaster();
@@ -129,14 +138,21 @@ export class FarmScene {
     this.bumperCamera.position.set(0, 1.25, -0.6);
     this.bumperCamera.lookAt(0, 0.8, -5.0);
 
-    // 5. OrbitControls
+    // 5. OrbitControls (Smooth Free-Look & Follow)
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
     this.controls.maxPolarAngle = Math.PI / 2 - 0.04; // Don't clip below ground
-    this.controls.minDistance = 2.0;
-    this.controls.maxDistance = 55.0;
-    this.controls.target.set(this.robotX, 1.0, this.robotZ - 4.0);
+    this.controls.minDistance = 1.2; // Allow close inspection of chassis & crops
+    this.controls.maxDistance = 65.0;
+    this.controls.target.set(this.robotX, 0.9, this.robotZ);
+
+    this.controls.addEventListener('start', () => {
+      this.isUserInteracting = true;
+    });
+    this.controls.addEventListener('end', () => {
+      this.isUserInteracting = false;
+    });
 
     // 6. Setup Botanical Materials
     this.setupMaterials();
@@ -163,10 +179,15 @@ export class FarmScene {
     // 12. Localized Precision Spray Particle Mist
     this.setupSpraySystem();
 
+    // 13. AI Crop Target Inspection Reticle (AR Visual Identifier)
+    this.setupTargetReticle();
+
     // Initial transform sync
+    this.prevRobotX = this.robotX;
+    this.prevRobotZ = this.robotZ;
     this.syncRobotTransform();
 
-    // 13. 60 FPS Render Loop
+    // 14. 60 FPS Render Loop
     this.animate = this.animate.bind(this);
     this.animFrameId = requestAnimationFrame(this.animate);
   }
@@ -470,6 +491,20 @@ export class FarmScene {
             recommendedDoseMl: 30,
             inventoryAvailable: true,
           };
+        } else if (rx === 1.5 && pz === 2.0) {
+          // Warning state plant on right side of starting furrow
+          state = 'WARNING';
+          healthScore = 71;
+          diseaseInfo = {
+            name: 'Early Aphid Foliar Stress',
+            pathogen: 'Aphis gossypii',
+            confidence: 0.81,
+            symptoms: 'Curling leaf margins with sticky honeydew residue on young shoots',
+            recommendedTreatment: 'Organic Cold-Pressed Neem Oil (5 mL/L) foliar spray',
+            chemicalProduct: 'Pure Neem Bio-Pesticide',
+            recommendedDoseMl: 35,
+            inventoryAvailable: true,
+          };
         } else if (rx === 1.5 && pz === -6.0) {
           // Another diseased target in Row 4
           state = 'DISEASED';
@@ -482,6 +517,20 @@ export class FarmScene {
             recommendedTreatment: 'Bio-fungicide Bacillus subtilis foliar spray',
             chemicalProduct: 'Serenade ASO',
             recommendedDoseMl: 35,
+            inventoryAvailable: true,
+          };
+        } else if (rx === -4.5 && pz === 0.0) {
+          // Diseased target in West Row 2
+          state = 'DISEASED';
+          healthScore = 39;
+          diseaseInfo = {
+            name: 'Powdery Mildew',
+            pathogen: 'Oidium neolycopersici',
+            confidence: 0.91,
+            symptoms: 'White powdery fungal patches on upper leaf surfaces and stems',
+            recommendedTreatment: 'Potassium Bicarbonate (3 g/L) organic contact fungicide',
+            chemicalProduct: 'MilStop Broad Spectrum',
+            recommendedDoseMl: 45,
             inventoryAvailable: true,
           };
         }
@@ -827,6 +876,82 @@ export class FarmScene {
   }
 
   // ───────────────────────────────────────────────────────────────────────────
+  // 3D AI Target Inspection Reticle (AR Visual Identifier)
+  // ───────────────────────────────────────────────────────────────────────────
+  private setupTargetReticle() {
+    this.targetReticleGroup = new THREE.Group();
+    this.targetReticleGroup.name = 'AITargetReticle';
+    this.targetReticleGroup.visible = false;
+
+    this.reticleMat = new THREE.MeshBasicMaterial({
+      color: 0xef4444,
+      transparent: true,
+      opacity: 0.85,
+      side: THREE.DoubleSide,
+    });
+
+    // 1. Concentric Targeting Ring
+    const ringGeom = new THREE.RingGeometry(0.35, 0.40, 32);
+    this.reticleRingMesh = new THREE.Mesh(ringGeom, this.reticleMat);
+    this.reticleRingMesh.rotation.x = -Math.PI / 2;
+    this.targetReticleGroup.add(this.reticleRingMesh);
+
+    // 2. 4 HUD Corner Brackets
+    this.reticleBrackets = new THREE.Group();
+    const bLen = 0.14;
+    const bRad = 0.44;
+    [
+      { x: bRad, z: bRad, rotY: 0 },
+      { x: -bRad, z: bRad, rotY: Math.PI / 2 },
+      { x: -bRad, z: -bRad, rotY: Math.PI },
+      { x: bRad, z: -bRad, rotY: -Math.PI / 2 },
+    ].forEach((b) => {
+      const bGeom = new THREE.BufferGeometry();
+      const pts = [
+        new THREE.Vector3(-bLen, 0, 0),
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(0, 0, -bLen),
+      ];
+      bGeom.setFromPoints(pts);
+      const line = new THREE.Line(bGeom, new THREE.LineBasicMaterial({ color: 0xef4444, linewidth: 2 }));
+      line.position.set(b.x, 0, b.z);
+      line.rotation.y = b.rotY;
+      this.reticleBrackets.add(line);
+    });
+    this.targetReticleGroup.add(this.reticleBrackets);
+
+    this.scene.add(this.targetReticleGroup);
+  }
+
+  public updateTargetReticle(plant: FarmPlant | null) {
+    if (!plant) {
+      if (this.targetReticleGroup) this.targetReticleGroup.visible = false;
+      return;
+    }
+
+    if (this.targetReticleGroup) {
+      this.targetReticleGroup.visible = true;
+      this.targetReticleGroup.position.set(plant.position.x, 1.05, plant.position.z);
+
+      let colorHex = 0x10b981; // Safe Green
+      if (plant.state === 'DISEASED') {
+        colorHex = 0xef4444; // Diseased Red
+      } else if (plant.state === 'WARNING') {
+        colorHex = 0xf59e0b; // Warning Amber
+      } else if (plant.state === 'TREATED') {
+        colorHex = 0xa855f7; // Treated Purple
+      }
+
+      this.reticleMat.color.setHex(colorHex);
+      this.reticleBrackets.traverse((child) => {
+        if ((child as THREE.Line).isLine) {
+          ((child as THREE.Line).material as THREE.LineBasicMaterial).color.setHex(colorHex);
+        }
+      });
+    }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
   // Genuine 3-Way Ultrasonic Raycast Distance Calculation
   // ───────────────────────────────────────────────────────────────────────────
   public computeUltrasonicDistances(): RaycastSensorDistances {
@@ -855,21 +980,50 @@ export class FarmScene {
     const leftDir = new THREE.Vector3(leftDirX, 0, leftDirZ).normalize();
     const rightDir = new THREE.Vector3(rightDirX, 0, rightDirZ).normalize();
 
-    const measureRay = (origin: THREE.Vector3, dir: THREE.Vector3): number => {
+    const measureSensorDistance = (origin: THREE.Vector3, dir: THREE.Vector3): number => {
+      let minDist = maxRangeMeters;
+
+      // 1. Raycast mesh targets (horizontal ray + downward angled ray)
       this.raycaster.set(origin, dir);
       this.raycaster.near = 0.05;
       this.raycaster.far = maxRangeMeters;
-
       const hits = this.raycaster.intersectObjects(this.raycastTargets, true);
-      if (hits.length > 0 && hits[0].distance < maxRangeMeters) {
-        return hits[0].distance;
+      if (hits.length > 0 && hits[0].distance < minDist) {
+        minDist = hits[0].distance;
       }
-      return maxRangeMeters;
+
+      // Slightly downward angled ray (-15 deg) to detect lower ground boulders and crates
+      const downDir = dir.clone().setY(-0.25).normalize();
+      this.raycaster.set(origin, downDir);
+      const downHits = this.raycaster.intersectObjects(this.raycastTargets, true);
+      if (downHits.length > 0 && downHits[0].distance < minDist) {
+        minDist = downHits[0].distance;
+      }
+
+      // 2. Analytical Acoustic Cone Intersection against all physical field colliders
+      // HC-SR04 ultrasonic sound waves emanate in a ~30 degree cone
+      for (const col of this.colliders) {
+        const dx = col.x - origin.x;
+        const dz = col.z - origin.z;
+        const proj = dx * dir.x + dz * dir.z;
+        if (proj > 0.08 && proj < minDist) {
+          const perp = Math.abs(dx * (-dir.z) + dz * dir.x);
+          const coneRadiusAtDist = col.radius + proj * 0.35; // ~20 deg spread
+          if (perp <= coneRadiusAtDist) {
+            const surfaceDist = Math.max(0.12, proj - col.radius * 0.85);
+            if (surfaceDist < minDist) {
+              minDist = surfaceDist;
+            }
+          }
+        }
+      }
+
+      return minDist;
     };
 
-    const centerDistM = measureRay(centerOrigin, centerDir);
-    const leftDistM = measureRay(leftOrigin, leftDir);
-    const rightDistM = measureRay(rightOrigin, rightDir);
+    const centerDistM = measureSensorDistance(centerOrigin, centerDir);
+    const leftDistM = measureSensorDistance(leftOrigin, leftDir);
+    const rightDistM = measureSensorDistance(rightOrigin, rightDir);
 
     const centerCm = Math.max(8, Math.round(centerDistM * 100));
     const leftCm = Math.max(8, Math.round(leftDistM * 100));
@@ -1051,58 +1205,91 @@ export class FarmScene {
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // Inspection & Target Plant Acquisition
+  // Inspection & Target Plant Acquisition (AI Vision Model)
   // ───────────────────────────────────────────────────────────────────────────
   public getDetectedPlantInFront(): FarmPlant | null {
+    // Rover orientation axes: Heading 0 = North along -Z
     const fwdX = Math.sin(this.robotHeading);
     const fwdZ = -Math.cos(this.robotHeading);
-    const camPos = new THREE.Vector2(this.robotX + fwdX * 0.8, this.robotZ + fwdZ * 0.8);
+    const rightX = Math.cos(this.robotHeading);
+    const rightZ = Math.sin(this.robotHeading);
 
-    let nearestPlant: FarmPlant | null = null;
-    let minDistance = 2.4; // Valid camera inspection acquisition radius (meters)
+    let bestPlant: FarmPlant | null = null;
+    let highestScore = -Infinity;
 
     for (const plant of this.plants) {
-      const pPos = new THREE.Vector2(plant.position.x, plant.position.z);
-      const dist = camPos.distanceTo(pPos);
+      const dx = plant.position.x - this.robotX;
+      const dz = plant.position.z - this.robotZ;
+      const totalDist = Math.hypot(dx, dz);
 
-      if (dist < minDistance) {
-        // Ensure plant is in the camera's forward field of view (dot product > 0.5)
-        const toPlant = pPos.clone().sub(camPos).normalize();
-        const fwdVec = new THREE.Vector2(fwdX, fwdZ).normalize();
-        const dot = fwdVec.dot(toPlant);
+      // Max visual inspection envelope (3.4 meters)
+      if (totalDist > 3.4) continue;
 
-        if (dot > 0.45) {
-          minDistance = dist;
-          nearestPlant = plant;
-        }
+      // Project into rover's coordinate frame
+      // fwdDist covers alongside the rover body (-1.0m) to forward horizon (+2.8m)
+      const fwdDist = dx * fwdX + dz * fwdZ;
+      // latDist covers adjacent furrow canopies on left and right beds (~1.5m, up to 2.5m)
+      const latDist = Math.abs(dx * rightX + dz * rightZ);
+
+      if (fwdDist < -1.0 || fwdDist > 2.8 || latDist > 2.5) continue;
+
+      // Prioritize diseased and warning crops for AI intervention
+      let basePriority = 100;
+      if (plant.state === 'DISEASED') {
+        basePriority = 600;
+      } else if (plant.state === 'WARNING') {
+        basePriority = 350;
+      } else if (plant.state === 'TREATED') {
+        basePriority = 60;
+      }
+
+      // Proximity score: closest plant along forward inspection focus
+      const score = basePriority - totalDist * 30 - latDist * 15;
+
+      if (score > highestScore) {
+        highestScore = score;
+        bestPlant = plant;
       }
     }
 
-    return nearestPlant;
+    return bestPlant;
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // Camera Perspectives & Follow Management
+  // Camera Perspectives & Follow Management (Preserves User Orbit & Zoom)
   // ───────────────────────────────────────────────────────────────────────────
   public setCameraMode(mode: SimCameraMode) {
     this.cameraMode = mode;
-    this.controls.enabled = (mode === 'ISOMETRIC' || mode === 'OVERHEAD' || mode === 'CHASE');
 
     if (mode === 'OVERHEAD') {
-      this.camera.position.set(0, 32, 0.1);
+      this.followRobot = true;
+      this.controls.enabled = true;
+      this.camera.position.set(this.robotX, 30.0, this.robotZ + 0.05);
       this.controls.target.set(this.robotX, 0, this.robotZ);
+      this.controls.update();
     } else if (mode === 'ISOMETRIC') {
-      this.camera.position.set(this.robotX + 12, 10, this.robotZ + 12);
-      this.controls.target.set(this.robotX, 1.0, this.robotZ);
+      this.followRobot = true;
+      this.controls.enabled = true;
+      this.camera.position.set(this.robotX + 9.5, 7.5, this.robotZ + 9.5);
+      this.controls.target.set(this.robotX, 0.9, this.robotZ);
+      this.controls.update();
     } else if (mode === 'CHASE') {
+      this.followRobot = true;
+      this.controls.enabled = true;
       this.resetCameraView();
+    } else if (mode === 'FREE') {
+      this.followRobot = false;
+      this.controls.enabled = true;
+    } else if (mode === 'FOLLOW') {
+      this.followRobot = true;
+      this.controls.enabled = true;
     }
   }
 
   public resetCameraView() {
-    // Elevated 3rd-person perspective looking down the row into the field
-    const backDist = 7.5;
-    const height = 4.2;
+    // 3rd-person elevated perspective looking down the crop row
+    const backDist = 6.8;
+    const height = 3.8;
     const fwdX = Math.sin(this.robotHeading);
     const fwdZ = -Math.cos(this.robotHeading);
 
@@ -1111,7 +1298,8 @@ export class FarmScene {
       height,
       this.robotZ - fwdZ * backDist
     );
-    this.controls.target.set(this.robotX, 1.1, this.robotZ - fwdZ * 4.0);
+    this.controls.target.set(this.robotX, 1.0, this.robotZ + fwdZ * 2.0);
+    this.controls.update();
   }
 
   // Bind external thumbnail canvas for the "Robot Camera View"
@@ -1136,24 +1324,25 @@ export class FarmScene {
 
     this.animFrameId = requestAnimationFrame(this.animate);
 
-    // Follow robot smooth camera tracking
-    if (this.followRobot && this.cameraMode === 'CHASE') {
-      const fwdX = Math.sin(this.robotHeading);
-      const fwdZ = -Math.cos(this.robotHeading);
-      const backDist = 7.2;
-      const camH = 4.0;
+    // Follow robot translation without overriding user orbit angle or zoom!
+    const deltaX = this.robotX - this.prevRobotX;
+    const deltaZ = this.robotZ - this.prevRobotZ;
+    this.prevRobotX = this.robotX;
+    this.prevRobotZ = this.robotZ;
 
-      const targetCam = new THREE.Vector3(
-        this.robotX - fwdX * backDist,
-        camH,
-        this.robotZ - fwdZ * backDist
-      );
+    if (this.followRobot && (Math.abs(deltaX) > 0.0001 || Math.abs(deltaZ) > 0.0001)) {
+      this.camera.position.x += deltaX;
+      this.camera.position.z += deltaZ;
+      this.controls.target.x += deltaX;
+      this.controls.target.z += deltaZ;
+    }
 
-      this.camera.position.lerp(targetCam, 0.08);
-      this.controls.target.lerp(
-        new THREE.Vector3(this.robotX, 1.1, this.robotZ + fwdZ * 3.5),
-        0.08
-      );
+    // Animate 3D AI Target Reticle rotation & hover if active
+    if (this.targetReticleGroup && this.targetReticleGroup.visible) {
+      this.reticleRingMesh.rotation.z += 0.015;
+      this.reticleBrackets.rotation.y -= 0.012;
+      const hoverY = 1.05 + Math.sin(performance.now() * 0.004) * 0.04;
+      this.targetReticleGroup.position.y = hoverY;
     }
 
     this.controls.update();

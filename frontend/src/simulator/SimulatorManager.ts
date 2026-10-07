@@ -231,7 +231,10 @@ export class SimulatorManager {
       // Transition plant state to TREATED
       this.scene.updatePlantState(plant.id, 'TREATED');
       plant.state = 'TREATED';
-      plant.treatmentHistory?.push({
+      plant.healthScore = Math.min(96, plant.healthScore + 45);
+      this.scene.updateTargetReticle(plant);
+      if (!plant.treatmentHistory) plant.treatmentHistory = [];
+      plant.treatmentHistory.push({
         timestamp: new Date().toLocaleTimeString(),
         action: plant.disease?.recommendedTreatment || 'Precision pulse fungicide',
         dosageMl: doseMl,
@@ -310,6 +313,7 @@ export class SimulatorManager {
     const plantInFront = this.scene.getDetectedPlantInFront();
     if (plantInFront !== this.detectedPlant) {
       this.detectedPlant = plantInFront;
+      this.scene.updateTargetReticle(plantInFront);
       if (plantInFront) {
         if (plantInFront.state === 'DISEASED' || plantInFront.state === 'WARNING') {
           this.addLog(
@@ -363,11 +367,31 @@ export class SimulatorManager {
       relayState: this.relayState,
       sprayActive: this.sprayActive,
       sprayTargetPlantId: this.sprayActive && this.detectedPlant ? this.detectedPlant.id : null,
+      detectedPlant: this.detectedPlant,
     };
 
     if (this.onTelemetryUpdate) {
       this.onTelemetryUpdate(telemetry);
     }
+  }
+
+  public targetNearestPlant(): FarmPlant | null {
+    const plants = this.scene.getAllPlants();
+    let closest: FarmPlant | null = null;
+    let minDist = Infinity;
+    for (const p of plants) {
+      const dist = Math.hypot(p.position.x - this.scene.robotX, p.position.z - this.scene.robotZ);
+      if (dist < minDist) {
+        minDist = dist;
+        closest = p;
+      }
+    }
+    if (closest) {
+      this.detectedPlant = closest;
+      this.scene.updateTargetReticle(closest);
+      this.addLog('DETECTION', `Manual target lock: Focused on ${closest.id} [${closest.state}].`);
+    }
+    return closest;
   }
 
   private getZoneAtPosition(x: number, z: number): FieldZone {
@@ -438,8 +462,15 @@ export class SimulatorManager {
 
       case 'FULL_DEMO':
         this.startFullDemo();
-        break;
+        return;
     }
+
+    this.scene.prevRobotX = this.scene.robotX;
+    this.scene.prevRobotZ = this.scene.robotZ;
+    this.scene.resetCameraView();
+    const target = this.scene.getDetectedPlantInFront();
+    this.detectedPlant = target;
+    this.scene.updateTargetReticle(target);
   }
 
   // ───────────────────────────────────────────────────────────────────────────
