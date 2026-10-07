@@ -554,7 +554,7 @@ export class FarmScene {
   // Raycast Distance Calculation (Genuine 3D Ray Intersections)
   // ───────────────────────────────────────────────────────────────────────────
   public computeUltrasonicDistances(): RaycastSensorDistances {
-    const originY = 0.55; // Height of sensors on physical rover
+    const originY = 1.42; // Height of ultrasonic sensors mounted on horizontal PVC rails
 
     // Robot Heading Direction Vector (Forward = +Z in local coordinates)
     const forwardX = Math.sin(this.robotHeading);
@@ -562,26 +562,26 @@ export class FarmScene {
 
     // 1. Center Ray: Forward along robot heading
     const centerOrigin = new THREE.Vector3(
-      this.robotX + forwardX * 1.35,
+      this.robotX + forwardX * 1.40,
       originY,
-      this.robotZ + forwardZ * 1.35
+      this.robotZ + forwardZ * 1.40
     );
     const centerDir = new THREE.Vector3(forwardX, 0, forwardZ).normalize();
 
     // 2. Left Ray: Facing 90° Left (-X in local frame)
     const leftDir = new THREE.Vector3(-forwardZ, 0, forwardX).normalize();
     const leftOrigin = new THREE.Vector3(
-      this.robotX + leftDir.x * 1.1,
+      this.robotX + leftDir.x * 1.10,
       originY,
-      this.robotZ + leftDir.z * 1.1
+      this.robotZ + leftDir.z * 1.10
     );
 
     // 3. Right Ray: Facing 90° Right (+X in local frame)
     const rightDir = new THREE.Vector3(forwardZ, 0, -forwardX).normalize();
     const rightOrigin = new THREE.Vector3(
-      this.robotX + rightDir.x * 1.1,
+      this.robotX + rightDir.x * 1.10,
       originY,
-      this.robotZ + rightDir.z * 1.1
+      this.robotZ + rightDir.z * 1.10
     );
 
     const maxRangeMeters = 2.5;
