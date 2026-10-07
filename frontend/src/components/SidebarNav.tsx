@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { TelemetryData } from '../types';
 
-type TabId = 'dashboard' | 'remote' | 'diagnostics' | 'heatmap' | 'sensors' | 'devices' | 'logs';
+type TabId = 'dashboard' | 'remote' | 'diagnostics' | 'heatmap' | 'sensors' | 'devices' | 'logs' | 'simulation';
 
 interface SidebarNavProps {
   activeTab: TabId;
