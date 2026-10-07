@@ -32,7 +32,8 @@ interface AgriGuardTwinProps {
 export const AgriGuardTwin: React.FC<AgriGuardTwinProps> = ({ telemetry }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const sceneManagerRef = useRef<TwinSceneManager | null>(null);
-  const [activeView, setActiveView] = useState<CameraViewPreset>('isometric');
+  const queryPreset = (new URLSearchParams(window.location.search).get('view') as CameraViewPreset) || 'isometric';
+  const [activeView, setActiveView] = useState<CameraViewPreset>(queryPreset);
   const [showLegend, setShowLegend] = useState<boolean>(true);
 
   // Initialize Three.js WebGL Scene on Mount
@@ -41,6 +42,10 @@ export const AgriGuardTwin: React.FC<AgriGuardTwinProps> = ({ telemetry }) => {
 
     const manager = new TwinSceneManager(containerRef.current);
     sceneManagerRef.current = manager;
+
+    if (queryPreset !== 'isometric') {
+      manager.setView(queryPreset);
+    }
 
     // Handle responsive window resize
     const handleResize = () => {
@@ -169,26 +174,30 @@ export const AgriGuardTwin: React.FC<AgriGuardTwinProps> = ({ telemetry }) => {
           <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', fontWeight: 600, marginRight: '0.2rem' }}>
             View:
           </span>
-          {(['isometric', 'front', 'top', 'side'] as CameraViewPreset[]).map((v) => (
+          {([
+            { id: 'isometric', label: 'Isometric' },
+            { id: 'top', label: 'Top (Deck)' },
+            { id: 'front', label: 'Front (Gantry)' },
+            { id: 'side', label: 'Side (Profile)' },
+          ] as const).map(({ id, label }) => (
             <button
-              key={v}
+              key={id}
               type="button"
-              onClick={() => handleSetView(v)}
+              onClick={() => handleSetView(id)}
               className="btn"
               style={{
                 padding: '0.25rem 0.65rem',
                 fontSize: '0.7rem',
-                fontWeight: activeView === v ? 800 : 600,
+                fontWeight: activeView === id ? 800 : 600,
                 borderRadius: '6px',
-                background: activeView === v ? 'var(--emerald-500)' : 'rgba(255, 255, 255, 0.05)',
-                color: activeView === v ? '#05080f' : 'var(--text-muted)',
-                border: activeView === v ? '1px solid var(--emerald-400)' : '1px solid rgba(255, 255, 255, 0.1)',
-                textTransform: 'capitalize',
+                background: activeView === id ? 'var(--emerald-500)' : 'rgba(255, 255, 255, 0.05)',
+                color: activeView === id ? '#05080f' : 'var(--text-muted)',
+                border: activeView === id ? '1px solid var(--emerald-400)' : '1px solid rgba(255, 255, 255, 0.1)',
                 cursor: 'pointer',
                 transition: 'all 0.15s ease'
               }}
             >
-              {v}
+              {label}
             </button>
           ))}
 

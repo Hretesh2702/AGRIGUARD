@@ -52,9 +52,9 @@ export class TwinSceneManager {
   private centerDist = 48;
   private rightDist = 86;
 
-  // Camera transition
-  private targetCamPos = new THREE.Vector3(5.2, 4.0, 5.2);
-  private targetControlsTarget = new THREE.Vector3(0, 0.9, 0);
+  // Camera transition (calibrated for high-clearance PVC rover & open tray)
+  private targetCamPos = new THREE.Vector3(4.6, 3.8, 4.6);
+  private targetControlsTarget = new THREE.Vector3(0, 1.35, 0);
   private isTransitioningCam = false;
 
   constructor(container: HTMLElement) {
@@ -126,6 +126,11 @@ export class TwinSceneManager {
     sunLight.shadow.camera.bottom = -6;
     sunLight.shadow.bias = -0.0005;
     this.scene.add(sunLight);
+
+    // Overhead inspection spotlight illuminating the electronics inside the foam tray
+    const trayLight = new THREE.DirectionalLight(0xffffff, 0.95);
+    trayLight.position.set(0, 5, 0);
+    this.scene.add(trayLight);
 
     // Accent Rim Light (Emerald tint for agricultural tech feel)
     const rimLight = new THREE.DirectionalLight(0x10b981, 0.6);
@@ -243,20 +248,21 @@ export class TwinSceneManager {
     this.isTransitioningCam = true;
     switch (preset) {
       case 'isometric':
-        this.targetCamPos.set(5.2, 4.0, 5.2);
-        this.targetControlsTarget.set(0, 0.9, 0);
+        this.targetCamPos.set(4.6, 3.8, 4.6);
+        this.targetControlsTarget.set(0, 1.35, 0);
         break;
       case 'front':
-        this.targetCamPos.set(0, 1.4, 6.2);
-        this.targetControlsTarget.set(0, 0.9, 0);
+        this.targetCamPos.set(0, 1.35, 4.8);
+        this.targetControlsTarget.set(0, 1.25, 0);
         break;
       case 'top':
-        this.targetCamPos.set(0, 8.5, 0.01);
-        this.targetControlsTarget.set(0, 0, 0);
+        // Top-down inspection angle looking directly inside the open foam tray (matching Photo 1)
+        this.targetCamPos.set(0, 4.8, 0.05);
+        this.targetControlsTarget.set(0, 1.45, 0);
         break;
       case 'side':
-        this.targetCamPos.set(6.8, 1.4, 0);
-        this.targetControlsTarget.set(0, 0.9, 0);
+        this.targetCamPos.set(5.0, 1.35, 0);
+        this.targetControlsTarget.set(0, 1.25, 0);
         break;
     }
   }
@@ -348,8 +354,8 @@ export class TwinSceneManager {
       const pos = spray.positions;
       const vel = spray.velocities;
       const count = spray.count;
-      const nozzleY = 0.55;
-      const nozzleZ = -1.75;
+      const nozzleY = 0.45;
+      const nozzleZ = -0.35;
 
       for (let i = 0; i < count; i++) {
         // integrate velocity
@@ -359,15 +365,15 @@ export class TwinSceneManager {
 
         // Reset particles hitting ground
         if (pos[i * 3 + 1] < 0.05) {
-          pos[i * 3 + 0] = (Math.random() - 0.5) * 0.15;
+          pos[i * 3 + 0] = (Math.random() - 0.5) * 0.12;
           pos[i * 3 + 1] = nozzleY;
           pos[i * 3 + 2] = nozzleZ;
 
-          // random spread
-          const spread = 0.65;
+          // random downward cone spread
+          const spread = 0.5;
           vel[i * 3 + 0] = (Math.random() - 0.5) * spread;
-          vel[i * 3 + 1] = -2.2 - Math.random() * 1.5;
-          vel[i * 3 + 2] = -0.3 - (Math.random() - 0.5) * spread;
+          vel[i * 3 + 1] = -1.8 - Math.random() * 1.5;
+          vel[i * 3 + 2] = (Math.random() - 0.5) * spread;
         }
       }
       spray.particleGeometry.attributes.position.needsUpdate = true;
