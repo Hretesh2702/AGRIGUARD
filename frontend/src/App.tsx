@@ -10,6 +10,7 @@ import { DiagnosticsPage } from './pages/DiagnosticsPage';
 import { SidebarHero } from './components/SidebarHero';
 import { ConnectPanel } from './components/ConnectPanel';
 import { AgriGuardTwin } from './digitalTwin/AgriGuardTwin';
+import { SimulatedViewPage } from './simulator/SimulatedViewPage';
 import { AIDetection, TreatmentDecision } from './types';
 import {
   runCropScan,
@@ -21,7 +22,7 @@ import {
 
 export const App: React.FC = () => {
   const { telemetry, wsConnected } = useTelemetry();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'remote' | 'diagnostics'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'remote' | 'simulation' | 'diagnostics'>('dashboard');
   const [activeZoneId, setActiveZoneId] = useState<string>('ZONE-R1C1');
 
   const [lastDetection, setLastDetection] = useState<AIDetection | null>(null);
@@ -150,6 +151,10 @@ export const App: React.FC = () => {
               </div>
             </div>
           </div>
+        )}
+
+        {activeTab === 'simulation' && (
+          <SimulatedViewPage />
         )}
 
         {activeTab === 'diagnostics' && (

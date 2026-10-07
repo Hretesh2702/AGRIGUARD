@@ -8,15 +8,16 @@ import {
   Radio,
   LayoutDashboard,
   Gamepad2,
-  Stethoscope
+  Stethoscope,
+  Boxes
 } from 'lucide-react';
 import { TelemetryData } from '../types';
 
 interface HeaderProps {
   telemetry: TelemetryData | null;
   wsConnected: boolean;
-  activeTab: 'dashboard' | 'remote' | 'diagnostics';
-  setActiveTab: (tab: 'dashboard' | 'remote' | 'diagnostics') => void;
+  activeTab: 'dashboard' | 'remote' | 'simulation' | 'diagnostics';
+  setActiveTab: (tab: 'dashboard' | 'remote' | 'simulation' | 'diagnostics') => void;
   onEmergencyStop: () => void;
 }
 
@@ -38,6 +39,7 @@ export const Header: React.FC<HeaderProps> = ({
   const navItems = [
     { id: 'dashboard' as const, label: 'Dashboard', icon: LayoutDashboard },
     { id: 'remote' as const, label: 'Field Remote', icon: Gamepad2 },
+    { id: 'simulation' as const, label: 'Simulated View', icon: Boxes },
     { id: 'diagnostics' as const, label: 'Hardware Diagnostics', icon: Stethoscope }
   ];
 
