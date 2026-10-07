@@ -4,6 +4,12 @@
   #include "../include/command_handler.h"
 #endif
 
+#if __has_include("config.h")
+  #include "config.h"
+#elif __has_include("../include/config.h")
+  #include "../include/config.h"
+#endif
+
 #if __has_include("motor_driver.h")
   #include "motor_driver.h"
 #elif __has_include("../include/motor_driver.h")

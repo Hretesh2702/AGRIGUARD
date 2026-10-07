@@ -6,8 +6,6 @@
   #include "../../include/esp32_ide_stubs.h"
 #endif
 
-#include "config.h"
-
 class CommandHandler {
 public:
     static void execute(StaticJsonDocument<512>& doc, StaticJsonDocument<512>& resp, int& httpCode);
