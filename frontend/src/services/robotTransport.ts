@@ -1,18 +1,16 @@
 /**
  * AgriGuard — Abstract Robot Transport Layer (Frontend)
  *
- * Exposes abstract transport interfaces:
- *   RobotTransport
- *     ├── WiFiTransport (Active primary)
- *     └── BluetoothTransport (BLE Standby)
+ * Bridges the legacy robot transport interface to the unified
+ * ConnectionManager supporting both Wi-Fi and Web Bluetooth (BLE).
  */
 
-import { sendRobotCommand, sendRobotStop, sendEmergencyStop } from './api';
+import { connectionManager, RobotCommandPayload } from './connectionManager';
 
 export type ConnectionState = 'CONNECTED' | 'DISCONNECTED' | 'RECONNECTING';
 
 export interface TransportCommand {
-  type: string;
+  type?: string;
   command: string;
   speed?: number;
   duration_ms?: number;
@@ -22,67 +20,79 @@ export interface TransportCommand {
 
 export interface IRobotTransport {
   name: string;
-  connect(): Promise<boolean>;
+  connect(options?: any): Promise<boolean>;
   disconnect(): Promise<void>;
   isConnected(): boolean;
   sendCommand(cmd: TransportCommand): Promise<any>;
 }
 
-export class WiFiTransport implements IRobotTransport {
+export class WiFiTransportWrapper implements IRobotTransport {
   name = 'Wi-Fi';
-  private _connected = false;
 
-  async connect(): Promise<boolean> {
-    try {
-      const res = await fetch('/api/network/status');
-      if (res.ok) {
-        const data = await res.json();
-        this._connected = Boolean(data.esp32_connected);
-        return this._connected;
-      }
-    } catch {
-      this._connected = false;
-    }
-    return false;
+  async connect(options?: any): Promise<boolean> {
+    return await connectionManager.connect('wifi', options);
   }
 
   async disconnect(): Promise<void> {
-    this._connected = false;
+    await connectionManager.disconnect();
   }
 
   isConnected(): boolean {
-    return this._connected;
+    const st = connectionManager.getStatus();
+    return st.state === 'CONNECTED' && st.transport === 'Wi-Fi';
   }
 
   async sendCommand(cmd: TransportCommand): Promise<any> {
-    if (cmd.command === 'STOP') {
-      return await sendRobotStop();
-    }
-    if (cmd.command === 'EMERGENCY_STOP') {
-      return await sendEmergencyStop();
-    }
-    return await sendRobotCommand(cmd.command, cmd.speed || 120, cmd.duration_ms || 0);
+    return await connectionManager.sendCommand(cmd as RobotCommandPayload);
   }
 }
 
-export class BluetoothTransport implements IRobotTransport {
+export class BluetoothTransportWrapper implements IRobotTransport {
   name = 'Bluetooth BLE';
 
   async connect(): Promise<boolean> {
-    console.warn('[BluetoothTransport] BLE fallback transport in standby; Wi-Fi is active.');
-    return false;
+    return await connectionManager.connect('bluetooth');
   }
 
-  async disconnect(): Promise<void> {}
+  async disconnect(): Promise<void> {
+    await connectionManager.disconnect();
+  }
 
   isConnected(): boolean {
-    return false;
+    const st = connectionManager.getStatus();
+    return st.state === 'CONNECTED' && st.transport === 'Bluetooth';
   }
 
-  async sendCommand(): Promise<any> {
-    throw new Error('Bluetooth transport is in standby mode. Please connect via Wi-Fi.');
+  async sendCommand(cmd: TransportCommand): Promise<any> {
+    return await connectionManager.sendCommand(cmd as RobotCommandPayload);
   }
 }
 
-// Global active transport instance (defaults to Wi-Fi)
-export const activeRobotTransport: IRobotTransport = new WiFiTransport();
+export class UnifiedTransportBridge implements IRobotTransport {
+  get name(): string {
+    return connectionManager.getTransport();
+  }
+
+  async connect(options?: any): Promise<boolean> {
+    return await connectionManager.connect(
+      connectionManager.getTransport() === 'Bluetooth' ? 'bluetooth' : 'wifi',
+      options
+    );
+  }
+
+  async disconnect(): Promise<void> {
+    await connectionManager.disconnect();
+  }
+
+  isConnected(): boolean {
+    return connectionManager.isConnected();
+  }
+
+  async sendCommand(cmd: TransportCommand): Promise<any> {
+    return await connectionManager.sendCommand(cmd as RobotCommandPayload);
+  }
+}
+
+export const WiFiTransport = WiFiTransportWrapper;
+export const BluetoothTransport = BluetoothTransportWrapper;
+export const activeRobotTransport: IRobotTransport = new UnifiedTransportBridge();

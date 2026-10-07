@@ -75,6 +75,19 @@ extern "C" {
 }
 #endif
 
+#if __has_include(<cmath>)
+#include <cmath>
+using std::sqrt;
+using std::atan2;
+#elif __has_include(<math.h>)
+#include <math.h>
+#else
+inline float sqrt(float x) { return 0.0f; }
+inline double sqrt(double x) { return 0.0; }
+inline float atan2(float y, float x) { return 0.0f; }
+inline double atan2(double y, double x) { return 0.0; }
+#endif
+
 #ifndef byte
 typedef uint8_t byte;
 #endif
@@ -237,9 +250,13 @@ public:
     void on(const char* uri, void (*handler)()) {}
     void on(const char* uri, HTTPMethod method, void (*handler)()) {}
     void on(const char* uri, int method, void (*handler)()) {}
+    void onNotFound(void (*handler)()) {}
     void begin() {}
     void handleClient() {}
     HTTPMethod method() const { return HTTP_POST; }
+    void sendHeader(const char* name, const char* value, bool first = false) {}
+    void sendHeader(const String& name, const String& value, bool first = false) {}
+    void send(int code) {}
     void send(int code, const char* content_type, const String& content) {}
     void send(int code, const char* content_type, const char* content) {}
     bool hasArg(const char* name) { return false; }
@@ -469,6 +486,20 @@ public:
     T operator|(T fallback) const { return fallback; }
     const char* operator|(const char* fallback) const { return fallback ? fallback : ""; }
 
+    // Comparison operators (avoids ambiguity with multiple implicit conversions)
+    bool operator==(bool b) const { return false; }
+    bool operator!=(bool b) const { return true; }
+    bool operator==(int v) const { return false; }
+    bool operator!=(int v) const { return true; }
+    bool operator==(const char* s) const { return false; }
+    bool operator!=(const char* s) const { return true; }
+    bool operator==(const String& s) const { return false; }
+    bool operator!=(const String& s) const { return true; }
+    friend bool operator==(bool b, const JsonVariant& v) { return false; }
+    friend bool operator!=(bool b, const JsonVariant& v) { return true; }
+    friend bool operator==(const char* s, const JsonVariant& v) { return false; }
+    friend bool operator!=(const char* s, const JsonVariant& v) { return true; }
+
     // Implicit type conversions
     operator int() const { return 0; }
     operator long() const { return 0; }
@@ -598,5 +629,20 @@ inline size_t serializeJson(const TDoc& doc, Print& output) {
 }
 
 
+
+class TwoWire {
+public:
+    bool begin(int sda = -1, int scl = -1, uint32_t frequency = 0) { return true; }
+    void beginTransmission(uint8_t address) {}
+    void beginTransmission(int address) {}
+    size_t write(uint8_t data) { return 1; }
+    size_t write(const uint8_t* data, size_t quantity) { return quantity; }
+    uint8_t endTransmission(bool sendStop = true) { return 0; }
+    size_t requestFrom(uint16_t address, size_t size, bool sendStop = true) { return size; }
+    size_t requestFrom(int address, int size) { return (size_t)size; }
+    int read() { return 0; }
+    int available() { return 14; }
+};
+extern TwoWire Wire;
 
 #endif // ESP32_REAL_TOOLCHAIN

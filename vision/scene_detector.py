@@ -20,7 +20,8 @@ try:
     import torch
     import torchvision.models.detection as detection
     HAS_TORCH_DETECTION = True
-except ImportError:
+except (ImportError, RuntimeError, AttributeError, Exception) as exc:
+    logger.warning("torchvision detection model unavailable (%s). Falling back to heuristic scene filter.", exc)
     HAS_TORCH_DETECTION = False
 
 # COCO categories of interest for rejection & safety

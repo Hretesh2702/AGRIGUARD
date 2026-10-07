@@ -73,7 +73,7 @@ export const Header: React.FC<HeaderProps> = ({
             <h1 style={{ fontSize: '1.25rem', fontWeight: 800, letterSpacing: '-0.02em', color: '#fff', margin: 0 }}>
               AgriGuard
             </h1>
-            {telemetry?.hardware_mode === 'SIMULATION' || telemetry?.mode === 'SIMULATION' || !esp32Connected ? (
+            {telemetry?.hardware_mode === 'SIMULATION' || telemetry?.mode === 'SIMULATION' ? (
               <span className="status-pill" style={{
                 background: 'rgba(56, 189, 248, 0.15)',
                 color: 'var(--sky-400)',
@@ -82,11 +82,22 @@ export const Header: React.FC<HeaderProps> = ({
                 padding: '0.15rem 0.45rem',
                 fontWeight: 700
               }}>
-                ● HARDWARE MODE: SIMULATION
+                ● MODE: SIMULATION
+              </span>
+            ) : esp32Connected ? (
+              <span className="status-pill status-online" style={{ fontSize: '0.62rem', padding: '0.15rem 0.45rem', fontWeight: 700 }}>
+                ● ROBOT: CONNECTED
               </span>
             ) : (
-              <span className="status-pill status-online" style={{ fontSize: '0.62rem', padding: '0.15rem 0.45rem', fontWeight: 700 }}>
-                ● HARDWARE: CONNECTED
+              <span className="status-pill" style={{
+                background: 'rgba(244, 63, 94, 0.15)',
+                color: 'var(--rose-400)',
+                border: '1px solid rgba(244, 63, 94, 0.35)',
+                fontSize: '0.62rem',
+                padding: '0.15rem 0.45rem',
+                fontWeight: 700
+              }}>
+                ● ROBOT: DISCONNECTED
               </span>
             )}
           </div>
@@ -222,9 +233,9 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* Hardware Status Badge */}
-          <div className={`status-pill ${esp32Connected ? 'status-online' : 'status-warning'}`} style={{ fontSize: '0.66rem', padding: '0.3rem 0.5rem', justifyContent: 'center' }}>
+          <div className={`status-pill ${esp32Connected ? 'status-online' : (telemetry?.hardware_mode === 'REAL_HARDWARE' ? 'status-offline' : 'status-warning')}`} style={{ fontSize: '0.66rem', padding: '0.3rem 0.5rem', justifyContent: 'center' }}>
             <Radio size={11} />
-            <span>Hardware: {esp32Connected ? `CONNECTED ${pingMs ? `(${pingMs}ms)` : ''}` : 'SIMULATION'}</span>
+            <span>Robot: {esp32Connected ? `CONNECTED ${pingMs ? `(${pingMs}ms)` : ''}` : (telemetry?.hardware_mode === 'REAL_HARDWARE' ? 'DISCONNECTED' : 'SIMULATION')}</span>
           </div>
 
           {/* Camera Badge */}

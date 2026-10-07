@@ -429,31 +429,66 @@ def connect_robot_wifi(req: ConnectWiFiRequest):
     Updates IP/port, switches transport to REAL_HARDWARE, and pings.
     """
     esp32.set_ip(req.ip.strip(), req.port or 80)
-    esp32.set_hardware_mode("REAL_HARDWARE")
-    connected = esp32.check_connection()
-    return {
-        "ok": connected,
-        "mode": esp32.hardware_mode,
-        "transport": "wifi",
-        "esp32_ip": esp32.ip,
-        "esp32_port": esp32.port,
-        "is_connected": connected,
-        "ping_ms": esp32.last_ping_ms,
-        "message": f"Connected to {esp32.ip}" if connected else f"Cannot reach ESP32 at {esp32.ip}:{esp32.port}"
-    }
+    connected = esp32.wifi_transport.connect()
+    if connected:
+        esp32.active_transport = esp32.wifi_transport
+        esp32.hardware_mode = "REAL_HARDWARE"
+        return {
+            "ok": True,
+            "mode": "REAL_HARDWARE",
+            "transport": "wifi",
+            "esp32_ip": esp32.ip,
+            "esp32_port": esp32.port,
+            "is_connected": True,
+            "ping_ms": esp32.wifi_transport.last_ping_ms,
+            "message": f"Connected to ESP32 at {esp32.ip}:{esp32.port} ({esp32.wifi_transport.last_ping_ms}ms ping) — Real Hardware Live!"
+        }
+    else:
+        esp32.hardware_mode = "REAL_HARDWARE"
+        esp32.active_transport = esp32.wifi_transport
+        return {
+            "ok": False,
+            "mode": "REAL_HARDWARE",
+            "transport": "wifi",
+            "esp32_ip": esp32.ip,
+            "esp32_port": esp32.port,
+            "is_connected": False,
+            "ping_ms": None,
+            "message": f"Could not reach ESP32 at {esp32.ip}:{esp32.port}. Connect to '{esp32.ip}' network and verify the ESP32 is powered on."
+        }
 
+
+class DisconnectRequest(BaseModel):
+    mode: Optional[str] = None
 
 @app.post("/api/robot/disconnect")
-def disconnect_robot():
+def disconnect_robot(req: Optional[DisconnectRequest] = None):
     """
-    Gracefully disconnects from hardware and returns to simulation mode.
+    Gracefully disconnects from hardware without silently switching modes.
     """
-    esp32.set_hardware_mode("SIMULATION")
+    esp32.wifi_transport.disconnect()
+    esp32.bt_transport.disconnect()
+    if req and req.mode and req.mode.upper() == "SIMULATION":
+        esp32.set_hardware_mode("SIMULATION")
     return {
         "ok": True,
-        "mode": "SIMULATION",
-        "message": "Disconnected. Switched back to simulation mode."
+        "mode": esp32.hardware_mode,
+        "is_connected": False,
+        "message": "Disconnected. Physical actuators safely halted."
     }
+
+
+@app.post("/api/robot/telemetry_ingest")
+def ingest_hardware_telemetry(payload: Dict[str, Any]):
+    """
+    Ingests live telemetry from Web Bluetooth (direct browser-to-robot connection)
+    so the entire backend, WebSocket clients, and AI services remain synchronized.
+    """
+    esp32.active_transport = esp32.bt_transport
+    esp32.bt_transport._connected = True
+    esp32.bt_transport._last_telemetry = payload
+    esp32.hardware_mode = "REAL_HARDWARE"
+    return {"ok": True, "source": "web_bluetooth"}
 
 
 @app.get("/api/robot/bluetooth/scan")

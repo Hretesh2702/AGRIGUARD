@@ -102,6 +102,14 @@ public:
         // Add Client Characteristic Configuration Descriptor for NOTIFY
         _pTelemetryChar->addDescriptor(new BLE2902());
 
+        // ── Status characteristic (Read + Notify) ─────────────────────────────
+        _pStatusChar = pService->createCharacteristic(
+            AGRIGUARD_STATUS_CHAR_UUID,
+            BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
+        );
+        _pStatusChar->addDescriptor(new BLE2902());
+        _pStatusChar->setValue("STANDBY");
+
         pService->start();
 
         // ── Advertising ────────────────────────────────────────────────────────
@@ -132,15 +140,23 @@ public:
         _pTelemetryChar->notify();
     }
 
+    static void notifyStatus(const char* status) {
+        if (_pStatusChar && AgriGuardServerCallbacks::clientConnected) {
+            _pStatusChar->setValue(status);
+            _pStatusChar->notify();
+        }
+    }
+
     static bool isClientConnected() {
         return AgriGuardServerCallbacks::clientConnected;
     }
 };
 
 BLEServer*         BLEServerManager::_pServer         = nullptr;
-BLECharacteristic* BLEServerManager::_pCmdChar         = nullptr;
-BLECharacteristic* BLEServerManager::_pTelemetryChar   = nullptr;
-unsigned long      BLEServerManager::_lastNotifyMs      = 0;
+BLECharacteristic* BLEServerManager::_pCmdChar        = nullptr;
+BLECharacteristic* BLEServerManager::_pTelemetryChar  = nullptr;
+BLECharacteristic* BLEServerManager::_pStatusChar     = nullptr;
+unsigned long      BLEServerManager::_lastNotifyMs     = 0;
 
 #else
 // ── Stub for desktop IDE / clangd without BLE headers ────────────────────────

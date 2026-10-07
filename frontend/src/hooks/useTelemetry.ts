@@ -1,15 +1,32 @@
 import { useState, useEffect, useRef } from 'react';
 import { TelemetryData } from '../types';
+import { connectionManager, ConnectionStatusInfo } from '../services/connectionManager';
 
 export function useTelemetry() {
   const [telemetry, setTelemetry] = useState<TelemetryData | null>(null);
   const [wsConnected, setWsConnected] = useState<boolean>(false);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatusInfo>(connectionManager.getStatus());
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     let unmounted = false;
 
+    // 1. Subscribe to ConnectionManager status
+    const unsubStatus = connectionManager.subscribeStatus((st) => {
+      if (!unmounted) {
+        setConnectionStatus(st);
+      }
+    });
+
+    // 2. Subscribe to ConnectionManager telemetry
+    const unsubTelemetry = connectionManager.subscribeTelemetry((data) => {
+      if (!unmounted) {
+        setTelemetry(data);
+      }
+    });
+
+    // 3. Connect to backend websocket
     function connect() {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = window.location.host;
@@ -36,6 +53,18 @@ export function useTelemetry() {
               return;
             }
             const data: TelemetryData = raw;
+
+            // If in REAL_HARDWARE mode and BLE is active, BLE takes precedence
+            if (connectionManager.getTransport() === 'Bluetooth' && connectionManager.isConnected()) {
+              return;
+            }
+
+            // If in REAL_HARDWARE mode and disconnected, enforce clean disconnected state (no fake data)
+            if (connectionManager.getMode() === 'REAL_HARDWARE' && !data.esp32_connected) {
+              setTelemetry(connectionManager.getDisconnectedTelemetry());
+              return;
+            }
+
             setTelemetry(data);
           } catch (e) {
             console.error('Failed to parse telemetry message:', e);
@@ -66,6 +95,8 @@ export function useTelemetry() {
 
     return () => {
       unmounted = true;
+      unsubStatus();
+      unsubTelemetry();
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
@@ -75,5 +106,5 @@ export function useTelemetry() {
     };
   }, []);
 
-  return { telemetry, wsConnected };
+  return { telemetry, wsConnected, connectionStatus };
 }

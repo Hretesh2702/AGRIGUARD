@@ -61,6 +61,126 @@ class SensorManagerService:
         # 25 <= distance <= 60 cm -> WARNING
         # distance < 25 cm -> OBSTACLE
         # Center < 25 cm -> OBSTACLE AHEAD
+        if not is_simulation and not esp32_connected:
+            # Physical ESP32 is disconnected: ZERO fake values, honest OFFLINE status
+            obs_status = "OFFLINE"
+            robot_status = "ROBOT: DISCONNECTED"
+            obs_detected = False
+            center_obstacle = False
+            sm_status = "OFFLINE"
+            env_status = "OFFLINE"
+            accel_x = None
+            accel_y = None
+            accel_z = None
+            gyro_x = None
+            gyro_y = None
+            gyro_z = None
+            pitch_deg = None
+            roll_deg = None
+            tilt_status = "OFFLINE"
+            pump_state = "OFF"
+            relay_state = "OFF"
+            spray_status = "OFFLINE"
+            pump_active_bool = False
+            relay_active_bool = False
+            flow_rate = 0.0
+            motor_state = "DISCONNECTED"
+            motor_speed = 0
+            n_val = None
+            p_val = None
+            k_val = None
+            npk_valid = False
+            npk_status = "OFFLINE"
+            estop_active = False
+
+            return {
+                "mode": mode,
+                "hardware_mode": mode,
+                "data_source": "ESP32_PHYSICAL",
+                "esp32_connected": False,
+                "operating_mode": "ROBOT: DISCONNECTED",
+                "robot_status": "ROBOT: DISCONNECTED",
+                "battery_voltage": None,
+                "battery_percentage": None,
+                "ultrasonic": {
+                    "left": None,
+                    "center": None,
+                    "right": None,
+                    "distance_cm": None,
+                    "obstacle_status": "OFFLINE",
+                    "robot_status": "ROBOT: DISCONNECTED",
+                    "obstacle_detected": False,
+                    "obstacle_ahead": False,
+                    "status": "OFFLINE",
+                    "valid": False
+                },
+                "soil_moisture": None,
+                "soil_moisture_status": "OFFLINE",
+                "dht22": {
+                    "temperature": None,
+                    "humidity": None,
+                    "valid": False
+                },
+                "mpu6050": {
+                    "accel_x": None,
+                    "accel_y": None,
+                    "accel_z": None,
+                    "gyro_x": None,
+                    "gyro_y": None,
+                    "gyro_z": None,
+                    "pitch_deg": None,
+                    "roll_deg": None,
+                    "tilt_status": "OFFLINE",
+                    "valid": False
+                },
+                "pump": {
+                    "state": "OFF",
+                    "relay": "OFF",
+                    "spray_status": "OFFLINE"
+                },
+                "environment": {
+                    "temperature_c": None,
+                    "humidity_pct": None,
+                    "status": "OFFLINE",
+                    "valid": False
+                },
+                "imu": {
+                    "ax": None,
+                    "ay": None,
+                    "az": None,
+                    "gx": None,
+                    "gy": None,
+                    "gz": None,
+                    "pitch_deg": None,
+                    "roll_deg": None,
+                    "valid": False,
+                    "status": "OFFLINE"
+                },
+                "npk": {
+                    "nitrogen_mg_kg": None,
+                    "phosphorus_mg_kg": None,
+                    "potassium_mg_kg": None,
+                    "valid": False,
+                    "status": "OFFLINE"
+                },
+                "actuators": {
+                    "pump_active": False,
+                    "relay_active": False,
+                    "valve_open": False,
+                    "flow_rate_ml_s": 0.0,
+                    "motor_state": "DISCONNECTED",
+                    "motor_speed": 0,
+                    "spray_state": "OFFLINE"
+                },
+                "safety": {
+                    "emergency_stop": False,
+                    "watchdog_tripped": False,
+                    "obstacle_detected": False,
+                    "robot_status": "ROBOT: DISCONNECTED",
+                    "hardware_errors": []
+                }
+            }
+
         center_val = us_center if us_center is not None else 999.0
         left_val = us_left if us_left is not None else 999.0
         right_val = us_right if us_right is not None else 999.0

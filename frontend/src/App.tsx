@@ -10,6 +10,7 @@ import { FieldHeatmap } from './components/FieldHeatmap';
 import { DiagnosticsPage } from './pages/DiagnosticsPage';
 import { SidebarHero } from './components/SidebarHero';
 import { ConnectPanel } from './components/ConnectPanel';
+import { AgriGuardTwin } from './digitalTwin/AgriGuardTwin';
 import { AIDetection, TreatmentDecision } from './types';
 import {
   runCropScan,
@@ -112,6 +113,9 @@ export const App: React.FC = () => {
             {/* Hardware Robot Connectivity (Wi-Fi & Bluetooth) */}
             <ConnectPanel telemetry={telemetry} />
 
+            {/* LIVE DIGITAL TWIN */}
+            <AgriGuardTwin telemetry={telemetry} />
+
             {/* Dashboard Primary Section: Robot Sensor Status Only */}
             <section style={{ width: '100%' }}>
               <TelemetryCard telemetry={telemetry} />
@@ -146,6 +150,9 @@ export const App: React.FC = () => {
                 />
               </div>
             </div>
+
+            {/* LIVE DIGITAL TWIN */}
+            <AgriGuardTwin telemetry={telemetry} />
 
             {/* Bottom Row: Environmental & Soil Telemetry */}
             <TelemetryCard telemetry={telemetry} />

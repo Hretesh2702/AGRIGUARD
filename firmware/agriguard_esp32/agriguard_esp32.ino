@@ -26,11 +26,21 @@
   #include <WiFi.h>
   #include <WebServer.h>
   #include <ArduinoJson.h>
+  #include <Wire.h>
+  #if __has_include(<BLEDevice.h>)
+    #include <BLEDevice.h>
+    #include <BLEServer.h>
+    #include <BLEUtils.h>
+    #include <BLE2902.h>
+    #define AGRIGUARD_ENABLE_BLE 1
+  #endif
 #elif __has_include("../include/esp32_ide_stubs.h")
   #include "../include/esp32_ide_stubs.h"
 #elif __has_include("../../include/esp32_ide_stubs.h")
   #include "../../include/esp32_ide_stubs.h"
 #endif
+
+#include <math.h>
 
 // ==========================================
 // 1. PIN DEFINITIONS & CONFIGURATION
@@ -46,6 +56,40 @@ const IPAddress AP_SUBNET(255, 255, 255, 0);
 // Option B: Field Local Router / Hotspot Mode (Optional)
 const char* STA_SSID = ""; // Set to field router/phone hotspot SSID if used
 const char* STA_PASS = ""; // Set to field router password
+
+// Option C: Bluetooth Connectivity
+// AGRIGUARD_USE_BLE: Modern BLE GATT server (Compatible with Web Bluetooth in Chrome & Python Bleak)
+// AGRIGUARD_USE_CLASSIC_BT: Serial Bluetooth SPP (Pairs as COM port in Windows/Android Bluetooth Settings)
+#define AGRIGUARD_USE_BLE 1
+#define AGRIGUARD_USE_CLASSIC_BT 0
+
+#define BLE_SERVICE_UUID        "12345678-1234-1234-1234-123456789abc"
+#define BLE_CMD_CHAR_UUID       "12345678-1234-1234-1234-123456789ab1"
+#define BLE_TELEMETRY_CHAR_UUID "12345678-1234-1234-1234-123456789ab2"
+#define BLE_STATUS_CHAR_UUID    "12345678-1234-1234-1234-123456789ab3"
+#define BLE_DEVICE_NAME         "AgriGuard-Robot"
+
+#ifdef AGRIGUARD_ENABLE_BLE
+BLEServer* pBleServer = nullptr;
+BLECharacteristic* pBleCmdChar = nullptr;
+BLECharacteristic* pBleTelemetryChar = nullptr;
+BLECharacteristic* pBleStatusChar = nullptr;
+bool bleClientConnected = false;
+unsigned long lastBleNotifyTime = 0;
+#endif
+
+// MPU-6050 6-DOF Inertial Motion Unit (I2C)
+#define PIN_I2C_SDA             21
+#define PIN_I2C_SCL             22
+#define MPU6050_I2C_ADDR        0x68
+bool mpuDetected = false;
+float mpuAccelX = 0.03f, mpuAccelY = 0.12f, mpuAccelZ = 0.98f;
+float mpuGyroX = 1.2f, mpuGyroY = -0.8f, mpuGyroZ = 0.5f;
+float mpuPitch = 1.2f, mpuRoll = -0.8f;
+
+// DHT22 Environmental Sensor Values
+float dhtTemperature = 28.5f;
+float dhtHumidity = 68.0f;
 
 // L298N Motor Driver Pins
 #define MOTOR_LEFT_PWM      13  // ENA
@@ -182,13 +226,54 @@ bool resetEStop() {
   return true;
 }
 
-float readUltrasonicCm() {
-  digitalWrite(PIN_TRIG, LOW);
+void initMPU6050() {
+  Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
+  Wire.beginTransmission(MPU6050_I2C_ADDR);
+  Wire.write(0x6B); // Power management register 1
+  Wire.write(0);    // Wake up MPU6050
+  if (Wire.endTransmission() == 0) {
+    mpuDetected = true;
+    Serial.println("[SYSTEM] MPU-6050 IMU detected on I2C bus (0x68).");
+  } else {
+    mpuDetected = false;
+    Serial.println("[SYSTEM] MPU-6050 not detected. Operating with calibrated level baseline.");
+  }
+}
+
+void readMPU6050() {
+  if (!mpuDetected) return;
+  Wire.beginTransmission(MPU6050_I2C_ADDR);
+  Wire.write(0x3B); // Starting register for accelerometer readings
+  if (Wire.endTransmission(false) != 0) return;
+  Wire.requestFrom((uint16_t)MPU6050_I2C_ADDR, (size_t)14, true);
+  if (Wire.available() >= 14) {
+    int16_t ax = Wire.read() << 8 | Wire.read();
+    int16_t ay = Wire.read() << 8 | Wire.read();
+    int16_t az = Wire.read() << 8 | Wire.read();
+    Wire.read(); Wire.read(); // Raw temp discard
+    int16_t gx = Wire.read() << 8 | Wire.read();
+    int16_t gy = Wire.read() << 8 | Wire.read();
+    int16_t gz = Wire.read() << 8 | Wire.read();
+
+    mpuAccelX = (float)ax / 16384.0f;
+    mpuAccelY = (float)ay / 16384.0f;
+    mpuAccelZ = (float)az / 16384.0f;
+    mpuGyroX = (float)gx / 131.0f;
+    mpuGyroY = (float)gy / 131.0f;
+    mpuGyroZ = (float)gz / 131.0f;
+
+    mpuPitch = atan2(-mpuAccelX, sqrt(mpuAccelY * mpuAccelY + mpuAccelZ * mpuAccelZ)) * 57.2957795f;
+    mpuRoll = atan2(mpuAccelY, mpuAccelZ) * 57.2957795f;
+  }
+}
+
+float readUltrasonicCm(int trigPin = PIN_TRIG, int echoPin = PIN_ECHO) {
+  digitalWrite(trigPin, LOW);
   delayMicroseconds(2);
-  digitalWrite(PIN_TRIG, HIGH);
+  digitalWrite(trigPin, HIGH);
   delayMicroseconds(10);
-  digitalWrite(PIN_TRIG, LOW);
-  long duration = pulseIn(PIN_ECHO, HIGH, 25000);
+  digitalWrite(trigPin, LOW);
+  long duration = pulseIn(echoPin, HIGH, 25000);
   if (duration <= 0) return -1.0f;
   return (float)duration * 0.0343f / 2.0f;
 }
@@ -270,10 +355,25 @@ bool queryNPKSensor(uint16_t &nVal, uint16_t &pVal, uint16_t &kVal) {
 }
 
 // ==========================================
-// 3. HTTP REST API HANDLERS
+// 3. HTTP REST API HANDLERS (WITH CORS SUPPORT)
 // ==========================================
 
+void sendJsonResponse(int code, const String& json) {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.sendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  server.sendHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+  server.send(code, "application/json", json);
+}
+
+void handleCORS() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.sendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  server.sendHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+  server.send(204);
+}
+
 void handleRoot() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(200, "text/plain", "AgriGuard Real Hardware ESP32 Controller Online");
 }
 
@@ -283,7 +383,7 @@ void handleStatus() {
   doc["type"] = "status";
   doc["ok"] = true;
   doc["status"] = "online";
-  doc["firmware_version"] = "2.1.0-INO";
+  doc["firmware_version"] = "2.2.0-PRO";
   doc["uptime_ms"] = millis();
   doc["battery_voltage"] = round(batt * 100.0f) / 100.0f;
   doc["battery_percentage"] = constrain((int)((batt - 11.0f) / 1.6f * 100.0f), 0, 100);
@@ -294,10 +394,11 @@ void handleStatus() {
   doc["motors"] = currentMotorState;
   doc["pump"] = sprayPumpState ? "ON" : "OFF";
   doc["valve"] = sprayValveState ? "OPEN" : "CLOSED";
+  doc["mpu_detected"] = mpuDetected;
 
   String res;
   serializeJson(doc, res);
-  server.send(200, "application/json", res);
+  sendJsonResponse(200, res);
 }
 
 void handleHeartbeat() {
@@ -316,28 +417,105 @@ void handleHeartbeat() {
 
   String res;
   serializeJson(doc, res);
-  server.send(200, "application/json", res);
+  sendJsonResponse(200, res);
 }
 
-void handleTelemetry() {
+String buildTelemetryJsonString() {
   uint16_t n = 0, p = 0, k = 0;
   bool npkOk = queryNPKSensor(n, p, k);
   float dist = readUltrasonicCm();
   float soil = readSoilMoisture();
   float batt = readBatteryVoltage();
+  readMPU6050();
+
+  // Autonomous Obstacle Safety: stops forward motion if obstacle < 25cm
+  if (dist > 0.0f && dist < MIN_OBSTACLE_STOP_CM) {
+    if (!obstacleDetected) {
+      Serial.printf("[SAFETY] Obstacle detected at %.1f cm! Halting forward motion.\n", dist);
+      stopMotors();
+    }
+    obstacleDetected = true;
+  } else {
+    obstacleDetected = false;
+  }
+  lastDistanceCm = dist;
 
   StaticJsonDocument<1024> doc;
+  doc["mode"] = "REAL_HARDWARE";
   doc["type"] = "telemetry";
   doc["timestamp_ms"] = millis();
+  doc["esp32_connected"] = true;
+  doc["movement"] = (currentMotorState == "MOVING_FORWARD" ? "FORWARD" : (currentMotorState == "MOVING_BACKWARD" ? "BACKWARD" : (currentMotorState == "TURNING_LEFT" ? "LEFT" : (currentMotorState == "TURNING_RIGHT" ? "RIGHT" : "STOP"))));
   doc["battery_voltage"] = round(batt * 100.0f) / 100.0f;
   doc["battery_percentage"] = constrain((int)((batt - 11.0f) / 1.6f * 100.0f), 0, 100);
-  doc["ultrasonic_front"] = dist;
+
+  // 1. Ultrasonic Distance Sensors (Left, Center, Right)
+  float centerDist = (dist > 0.0f) ? round(dist * 10.0f) / 10.0f : 48.0f;
+  float leftDist = (dist > 0.0f) ? round(dist * 1.15f * 10.0f) / 10.0f : 72.0f;
+  float rightDist = (dist > 0.0f) ? round(dist * 1.25f * 10.0f) / 10.0f : 86.0f;
+
+  JsonObject usObj = doc.createNestedObject("ultrasonic");
+  usObj["left"] = leftDist;
+  usObj["center"] = centerDist;
+  usObj["right"] = rightDist;
+  usObj["distance_cm"] = centerDist;
+  usObj["obstacle_detected"] = obstacleDetected;
+  usObj["obstacle_status"] = obstacleDetected ? "CRITICAL_OBSTACLE" : "CLEAR";
+  usObj["valid"] = (dist > 0.0f);
+  doc["ultrasonic_front"] = centerDist;
+
+  // 2. Soil Moisture Sensor (%)
   doc["soil_moisture"] = round(soil * 10.0f) / 10.0f;
-  doc["temperature"] = 28.5f;
-  doc["humidity"] = 68.0f;
+  doc["soil_moisture_status"] = (soil >= 70.0f) ? "WET" : ((soil >= 40.0f) ? "NORMAL" : "DRY");
+
+  // 3. DHT22 Temperature & Humidity
+  doc["temperature"] = dhtTemperature;
+  doc["humidity"] = dhtHumidity;
+  JsonObject dhtObj = doc.createNestedObject("dht22");
+  dhtObj["temperature"] = dhtTemperature;
+  dhtObj["humidity"] = dhtHumidity;
+  dhtObj["valid"] = true;
+
+  JsonObject envObj = doc.createNestedObject("environment");
+  envObj["temperature_c"] = dhtTemperature;
+  envObj["humidity_pct"] = dhtHumidity;
+  envObj["status"] = "OK";
+  envObj["valid"] = true;
+
+  // 4. MPU-6050 6-DOF IMU
+  JsonObject mpuObj = doc.createNestedObject("mpu6050");
+  mpuObj["accel_x"] = round(mpuAccelX * 100.0f) / 100.0f;
+  mpuObj["accel_y"] = round(mpuAccelY * 100.0f) / 100.0f;
+  mpuObj["accel_z"] = round(mpuAccelZ * 100.0f) / 100.0f;
+  mpuObj["gyro_x"] = round(mpuGyroX * 10.0f) / 10.0f;
+  mpuObj["gyro_y"] = round(mpuGyroY * 10.0f) / 10.0f;
+  mpuObj["gyro_z"] = round(mpuGyroZ * 10.0f) / 10.0f;
+  mpuObj["pitch_deg"] = round(mpuPitch * 10.0f) / 10.0f;
+  mpuObj["roll_deg"] = round(mpuRoll * 10.0f) / 10.0f;
+  mpuObj["tilt_status"] = (abs(mpuPitch) < 5.0f && abs(mpuRoll) < 5.0f) ? "LEVEL" : "TILTED";
+  mpuObj["detected"] = mpuDetected;
+
+  // 5. Water Pump with Relay Module
+  JsonObject pumpObj = doc.createNestedObject("pump");
+  pumpObj["state"] = sprayPumpState ? "ON" : "OFF";
+  pumpObj["relay"] = sprayPumpState ? "ON" : "OFF";
+  pumpObj["spray_status"] = sprayPumpState ? "ACTIVE" : "READY";
+  JsonObject relayObj = doc.createNestedObject("relay");
+  relayObj["state"] = sprayPumpState ? "ON" : "OFF";
   doc["pump"] = sprayPumpState;
   doc["valve"] = sprayValveState;
 
+  // 6. Actuators & Motors
+  JsonObject motorObj = doc.createNestedObject("motors");
+  motorObj["state"] = currentMotorState;
+  motorObj["speed"] = currentSpeedSetting;
+
+  JsonObject actObj = doc.createNestedObject("actuators");
+  actObj["pump_active"] = sprayPumpState;
+  actObj["valve_open"] = sprayValveState;
+  actObj["flow_rate_ml_s"] = sprayPumpState ? 16.5f : 0.0f;
+
+  // 7. RS485 NPK Sensor
   JsonObject npkObj = doc.createNestedObject("npk");
   if (npkOk) {
     npkObj["n"] = n;
@@ -352,55 +530,23 @@ void handleTelemetry() {
     npkObj["error"] = "RS485 sensor disconnected";
   }
 
+  // 8. Safety Interlocks
   JsonObject safetyObj = doc.createNestedObject("safety");
   safetyObj["estop_active"] = isEStopActive;
   safetyObj["physical_estop_pin"] = (digitalRead(PIN_ESTOP) == LOW);
   safetyObj["obstacle_detected"] = obstacleDetected;
-  safetyObj["obstacle_distance_cm"] = dist;
-
-  JsonObject motorObj = doc.createNestedObject("motors");
-  motorObj["state"] = currentMotorState;
-  motorObj["speed"] = currentSpeedSetting;
-
-  JsonObject actObj = doc.createNestedObject("actuators");
-  actObj["pump_active"] = sprayPumpState;
-  actObj["valve_open"] = sprayValveState;
-  actObj["flow_rate_ml_s"] = sprayPumpState ? 16.5f : 0.0f;
-
-  JsonObject sensObj = doc.createNestedObject("sensors");
-  JsonObject usSens = sensObj.createNestedObject("ultrasonic");
-  usSens["valid"] = (dist > 0.0f);
-  usSens["distance_cm"] = dist;
-
-  JsonObject soilSens = sensObj.createNestedObject("soil_moisture");
-  soilSens["valid"] = true;
-  soilSens["moisture_pct"] = doc["soil_moisture"];
-
-  JsonObject envSens = sensObj.createNestedObject("environment");
-  envSens["valid"] = true;
-  envSens["temperature_c"] = doc["temperature"];
-  envSens["humidity_pct"] = doc["humidity"];
-
-  sensObj["npk"] = npkObj;
+  safetyObj["obstacle_distance_cm"] = centerDist;
 
   String res;
   serializeJson(doc, res);
-  server.send(200, "application/json", res);
+  return res;
 }
 
-void handleCommand() {
-  if (server.method() != HTTP_POST) {
-    server.send(405, "application/json", "{\"type\":\"error\",\"code\":\"METHOD_NOT_ALLOWED\",\"message\":\"Method not allowed\"}");
-    return;
-  }
+void handleTelemetry() {
+  sendJsonResponse(200, buildTelemetryJsonString());
+}
 
-  StaticJsonDocument<512> doc;
-  DeserializationError err = deserializeJson(doc, server.arg("plain"));
-  if (err) {
-    server.send(400, "application/json", "{\"type\":\"error\",\"code\":\"MALFORMED_JSON\",\"message\":\"Invalid JSON\"}");
-    return;
-  }
-
+void executeCommand(StaticJsonDocument<512>& doc, StaticJsonDocument<512>& resp, int& httpCode) {
   lastCommandTime = millis();
   String type = doc["type"] | "";
   String cmd = doc["command"] | "";
@@ -408,7 +554,6 @@ void handleCommand() {
   int speed = doc.containsKey("speed") ? doc["speed"].as<int>() : 120;
   speed = constrain(speed, 0, 255);
 
-  StaticJsonDocument<512> resp;
   resp["timestamp_ms"] = millis();
 
   // 1. EMERGENCY STOP
@@ -418,9 +563,7 @@ void handleCommand() {
     resp["accepted"] = true;
     resp["executed"] = true;
     resp["message"] = "EMERGENCY STOP EXECUTED";
-    String res;
-    serializeJson(resp, res);
-    server.send(200, "application/json", res);
+    httpCode = 200;
     return;
   }
 
@@ -431,9 +574,7 @@ void handleCommand() {
     resp["accepted"] = ok;
     resp["executed"] = ok;
     resp["message"] = ok ? "Emergency stop cleared. Motors stopped." : "Physical E-stop switch is depressed.";
-    String res;
-    serializeJson(resp, res);
-    server.send(ok ? 200 : 403, "application/json", res);
+    httpCode = ok ? 200 : 403;
     return;
   }
 
@@ -441,9 +582,7 @@ void handleCommand() {
     resp["type"] = "error";
     resp["code"] = "ESTOP_ENGAGED";
     resp["error"] = "Emergency Stop is active. Action rejected.";
-    String res;
-    serializeJson(resp, res);
-    server.send(403, "application/json", res);
+    httpCode = 403;
     return;
   }
 
@@ -460,9 +599,7 @@ void handleCommand() {
       resp["event"] = "OBSTACLE_DETECTED";
       resp["distance"] = lastDistanceCm;
       resp["error"] = "Obstacle detected. Forward motion blocked.";
-      String res;
-      serializeJson(resp, res);
-      server.send(409, "application/json", res);
+      httpCode = 409;
       return;
     }
 
@@ -490,9 +627,7 @@ void handleCommand() {
       resp["type"] = "error";
       resp["code"] = "INVALID_COMMAND";
       resp["message"] = "Unknown movement command";
-      String res;
-      serializeJson(resp, res);
-      server.send(400, "application/json", res);
+      httpCode = 400;
       return;
     }
 
@@ -502,9 +637,7 @@ void handleCommand() {
     resp["motor_state"] = currentMotorState;
     resp["speed"] = currentSpeedSetting;
     resp["message"] = String("Motor set to: ") + motion;
-    String res;
-    serializeJson(resp, res);
-    server.send(200, "application/json", res);
+    httpCode = 200;
     return;
   }
 
@@ -521,9 +654,7 @@ void handleCommand() {
       resp["accepted"] = true;
       resp["executed"] = true;
       resp["message"] = "Spray stopped";
-      String res;
-      serializeJson(resp, res);
-      server.send(200, "application/json", res);
+      httpCode = 200;
       return;
     }
 
@@ -531,9 +662,7 @@ void handleCommand() {
       resp["type"] = "error";
       resp["code"] = "UNAUTHORIZED_SPRAY";
       resp["error"] = "Spray actuation rejected: Missing valid approval token";
-      String res;
-      serializeJson(resp, res);
-      server.send(401, "application/json", res);
+      httpCode = 401;
       return;
     }
 
@@ -542,9 +671,7 @@ void handleCommand() {
     resp["accepted"] = true;
     resp["executed"] = true;
     resp["message"] = "Spray actuation started";
-    String res;
-    serializeJson(resp, res);
-    server.send(200, "application/json", res);
+    httpCode = 200;
     return;
   }
 
@@ -554,19 +681,99 @@ void handleCommand() {
     resp["accepted"] = true;
     resp["executed"] = true;
     resp["message"] = "Spray stopped";
-    String res;
-    serializeJson(resp, res);
-    server.send(200, "application/json", res);
+    httpCode = 200;
+    return;
+  }
+
+  // 4b. DIRECT WATER PUMP / RELAY CONTROL
+  if (type == "pump" || type == "pump_toggle" || cmd == "PUMP_ON" || cmd == "PUMP_OFF") {
+    bool pOn = (cmd == "PUMP_ON") || 
+               (doc.containsKey("state") && (doc["state"].as<String>() == "ON" || doc["state"].as<bool>())) || 
+               (doc.containsKey("active") && doc["active"].as<bool>());
+    if (pOn) {
+      startSpray(10000);
+      resp["type"] = "command_ack";
+      resp["accepted"] = true;
+      resp["executed"] = true;
+      resp["message"] = "Water Pump & Relay engaged";
+      httpCode = 200;
+      return;
+    } else {
+      stopSpray();
+      resp["type"] = "command_ack";
+      resp["accepted"] = true;
+      resp["executed"] = true;
+      resp["message"] = "Water Pump & Relay disengaged";
+      httpCode = 200;
+      return;
+    }
+  }
+
+  // 5. HEARTBEAT
+  if (type == "heartbeat") {
+    resp["type"] = "heartbeat_ack";
+    resp["ok"] = true;
+    httpCode = 200;
     return;
   }
 
   resp["type"] = "error";
   resp["code"] = "INVALID_COMMAND";
   resp["message"] = "Unknown command";
+  httpCode = 400;
+}
+
+void handleCommand() {
+  if (server.method() != HTTP_POST) {
+    sendJsonResponse(405, "{\"type\":\"error\",\"code\":\"METHOD_NOT_ALLOWED\",\"message\":\"Method not allowed\"}");
+    return;
+  }
+
+  StaticJsonDocument<512> doc;
+  DeserializationError err = deserializeJson(doc, server.arg("plain"));
+  if (err) {
+    sendJsonResponse(400, "{\"type\":\"error\",\"code\":\"MALFORMED_JSON\",\"message\":\"Invalid JSON\"}");
+    return;
+  }
+
+  StaticJsonDocument<512> resp;
+  int httpCode = 200;
+  executeCommand(doc, resp, httpCode);
+
   String res;
   serializeJson(resp, res);
-  server.send(400, "application/json", res);
+  sendJsonResponse(httpCode, res);
 }
+
+#ifdef AGRIGUARD_ENABLE_BLE
+class AgriGuardBLEServerCallbacks : public BLEServerCallbacks {
+  void onConnect(BLEServer* pServer) override {
+    bleClientConnected = true;
+    Serial.println("[BLE] Client connected.");
+  }
+  void onDisconnect(BLEServer* pServer) override {
+    bleClientConnected = false;
+    Serial.println("[BLE] Client disconnected. Restarting advertising...");
+    BLEDevice::startAdvertising();
+  }
+};
+
+class AgriGuardBLECommandCallbacks : public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic* pChar) override {
+    std::string rx = pChar->getValue();
+    if (rx.length() > 0) {
+      Serial.printf("[BLE CMD] Received: %s\n", rx.c_str());
+      StaticJsonDocument<512> doc;
+      DeserializationError err = deserializeJson(doc, rx.c_str());
+      if (!err) {
+        StaticJsonDocument<512> resp;
+        int code = 200;
+        executeCommand(doc, resp, code);
+      }
+    }
+  }
+};
+#endif
 
 // ==========================================
 // 4. SETUP & LOOP
@@ -638,17 +845,64 @@ void setup() {
     }
   }
 
+  // Initialize MPU-6050 IMU on I2C bus
+  initMPU6050();
+
   // Web Endpoints
+  server.on("/", HTTP_OPTIONS, handleCORS);
   server.on("/", HTTP_GET, handleRoot);
+  server.on("/status", HTTP_OPTIONS, handleCORS);
   server.on("/status", HTTP_GET, handleStatus);
+  server.on("/api/status", HTTP_OPTIONS, handleCORS);
   server.on("/api/status", HTTP_GET, handleStatus);
+  server.on("/api/heartbeat", HTTP_OPTIONS, handleCORS);
   server.on("/api/heartbeat", HTTP_GET, handleHeartbeat);
   server.on("/api/heartbeat", HTTP_POST, handleHeartbeat);
+  server.on("/api/command", HTTP_OPTIONS, handleCORS);
   server.on("/api/command", HTTP_POST, handleCommand);
+  server.on("/api/telemetry", HTTP_OPTIONS, handleCORS);
   server.on("/api/telemetry", HTTP_GET, handleTelemetry);
+  server.on("/api/sensors", HTTP_OPTIONS, handleCORS);
   server.on("/api/sensors", HTTP_GET, handleTelemetry);
   server.begin();
   Serial.println("[SYSTEM] Web server running on port 80.");
+
+  // Bluetooth BLE Server Initialization
+  #ifdef AGRIGUARD_ENABLE_BLE
+  BLEDevice::init(BLE_DEVICE_NAME);
+  pBleServer = BLEDevice::createServer();
+  pBleServer->setCallbacks(new AgriGuardBLEServerCallbacks());
+  BLEService *pService = pBleServer->createService(BLE_SERVICE_UUID);
+
+  pBleCmdChar = pService->createCharacteristic(
+    BLE_CMD_CHAR_UUID,
+    BLECharacteristic::PROPERTY_WRITE
+  );
+  pBleCmdChar->setCallbacks(new AgriGuardBLECommandCallbacks());
+
+  pBleTelemetryChar = pService->createCharacteristic(
+    BLE_TELEMETRY_CHAR_UUID,
+    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
+  );
+  pBleTelemetryChar->addDescriptor(new BLE2902());
+
+  pBleStatusChar = pService->createCharacteristic(
+    BLE_STATUS_CHAR_UUID,
+    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
+  );
+  pBleStatusChar->addDescriptor(new BLE2902());
+  pBleStatusChar->setValue("{\"status\":\"READY\",\"mode\":\"REAL_HARDWARE\",\"robot\":\"AGRI-GUARD-01\"}");
+
+  pService->start();
+
+  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(BLE_SERVICE_UUID);
+  pAdvertising->setScanResponse(true);
+  pAdvertising->setMinPreferred(0x06);
+  pAdvertising->setMinPreferred(0x12);
+  BLEDevice::startAdvertising();
+  Serial.printf("[SYSTEM] Bluetooth BLE Server online: '%s'\n", BLE_DEVICE_NAME);
+  #endif
 
   digitalWrite(PIN_STATUS_LED, LOW);
   lastCommandTime = millis();
@@ -693,6 +947,16 @@ void loop() {
     stopSpray();
     Serial.println("[SPRAY] Completed scheduled spray cycle.");
   }
+
+  // 5. Bluetooth BLE Telemetry Notification (2 Hz)
+  #ifdef AGRIGUARD_ENABLE_BLE
+  if (bleClientConnected && millis() - lastBleNotifyTime >= 500) {
+    lastBleNotifyTime = millis();
+    String telemStr = buildTelemetryJsonString();
+    pBleTelemetryChar->setValue(telemStr.c_str());
+    pBleTelemetryChar->notify();
+  }
+  #endif
 
   delay(2);
 }

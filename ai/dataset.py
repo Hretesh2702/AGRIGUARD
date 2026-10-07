@@ -15,6 +15,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from PIL import Image
 from sklearn.model_selection import train_test_split
+from torchvision import transforms
 
 from ai.preprocessing import get_train_transforms, get_eval_transforms
 

@@ -22,6 +22,15 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+# Automatically forward to project virtualenv if invoked from global Python
+venv_python = PROJECT_ROOT / ".venv" / "Scripts" / "python.exe" if sys.platform == "win32" else PROJECT_ROOT / ".venv" / "bin" / "python"
+if sys.prefix == sys.base_prefix and venv_python.is_file() and os.environ.get("_AGRIGUARD_VENV_ACTIVE") != "1":
+    import subprocess
+    os.environ["_AGRIGUARD_VENV_ACTIVE"] = "1"
+    print(f"[*] AgriGuard: Auto-routing to project virtualenv ({venv_python})...")
+    ret = subprocess.run([str(venv_python)] + sys.argv)
+    sys.exit(ret.returncode)
+
 import uvicorn
 
 

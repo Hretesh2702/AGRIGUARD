@@ -84,6 +84,7 @@ class WiFiTransport(RobotTransport):
         self._connected = False
         self.last_ping_ms: Optional[float] = None
         self.last_telemetry: Optional[Dict[str, Any]] = None
+        self._session = requests.Session()
 
     @property
     def base_url(self) -> str:
@@ -97,14 +98,19 @@ class WiFiTransport(RobotTransport):
 
     def connect(self) -> bool:
         t0 = time.time()
-        try:
-            resp = requests.get(f"{self.base_url}/api/status", timeout=self.timeout)
-            if resp.status_code == 200:
-                self._connected = True
-                self.last_ping_ms = round((time.time() - t0) * 1000.0, 1)
-                return True
-        except Exception as e:
-            logger.debug(f"[WiFiTransport] Connect check failed: {e}")
+        for endpoint in ("/api/status", "/status", "/api/heartbeat", "/"):
+            try:
+                resp = self._session.get(f"{self.base_url}{endpoint}", timeout=(0.8, 1.2))
+                if resp.status_code == 200:
+                    self._connected = True
+                    self.last_ping_ms = round((time.time() - t0) * 1000.0, 1)
+                    logger.info(f"[WiFiTransport] Connected to {self.base_url} ({self.last_ping_ms}ms)")
+                    return True
+            except (requests.ConnectionError, requests.ConnectTimeout) as ce:
+                logger.debug(f"[WiFiTransport] Host {self.base_url} unreachable: {ce}")
+                break
+            except Exception as e:
+                logger.debug(f"[WiFiTransport] Connect {endpoint} failed: {e}")
         self._connected = False
         self.last_ping_ms = None
         return False
@@ -119,7 +125,7 @@ class WiFiTransport(RobotTransport):
     def send_heartbeat(self) -> Dict[str, Any]:
         t0 = time.time()
         try:
-            resp = requests.get(f"{self.base_url}/api/heartbeat", timeout=1.2)
+            resp = self._session.get(f"{self.base_url}/api/heartbeat", timeout=1.0)
             latency = round((time.time() - t0) * 1000.0, 1)
             if resp.status_code == 200:
                 self._connected = True
@@ -146,7 +152,7 @@ class WiFiTransport(RobotTransport):
         cmd_id = payload.get("command_id", f"CMD-{int(time.time()*1000)}")
 
         try:
-            resp = requests.post(url, json=payload, timeout=self.timeout)
+            resp = self._session.post(url, json=payload, timeout=self.timeout)
             data = resp.json() if resp.status_code in (200, 400, 401, 403, 409) else {}
             if resp.status_code == 200:
                 self._connected = True
@@ -206,7 +212,7 @@ class WiFiTransport(RobotTransport):
 
     def receive_telemetry(self) -> Dict[str, Any]:
         try:
-            resp = requests.get(f"{self.base_url}/api/telemetry", timeout=self.timeout)
+            resp = self._session.get(f"{self.base_url}/api/telemetry", timeout=1.0)
             if resp.status_code == 200:
                 data = resp.json()
                 self._connected = True
@@ -361,6 +367,11 @@ class BluetoothTransport(RobotTransport):
                 self._connected = True
                 self.last_ping_ms = round((time.time() - t0) * 1000.0, 1)
                 logger.info(f"[BluetoothTransport] Connected to {self.device_address} in {self.last_ping_ms}ms")
+                try:
+                    await client.start_notify(AGRIGUARD_TELEMETRY_CHAR_UUID, self._on_telemetry_notify)
+                    logger.info("[BluetoothTransport] Subscribed to real-time BLE telemetry notifications.")
+                except Exception as ne:
+                    logger.debug(f"[BluetoothTransport] BLE notify note: {ne}")
                 return True
         except Exception as e:
             logger.warning(f"[BluetoothTransport] Connect failed: {e}")
@@ -368,9 +379,23 @@ class BluetoothTransport(RobotTransport):
         self.last_ping_ms = None
         return False
 
+    def _on_telemetry_notify(self, sender, data: bytearray):
+        try:
+            raw = bytes(data).decode("utf-8")
+            parsed = json.loads(raw)
+            parsed["esp32_connected"] = True
+            parsed["transport"] = "bluetooth"
+            self._last_telemetry = parsed
+        except Exception as e:
+            logger.debug(f"[BluetoothTransport] Notify parse error: {e}")
+
     async def _async_disconnect(self):
         try:
             if self._client and self._client.is_connected:
+                try:
+                    await self._client.stop_notify(AGRIGUARD_TELEMETRY_CHAR_UUID)
+                except Exception:
+                    pass
                 await self._client.disconnect()
         except Exception:
             pass
@@ -500,6 +525,14 @@ class BluetoothTransport(RobotTransport):
                 "npk": {"valid": False}
             }
         }
+    def receive_telemetry(self) -> Dict[str, Any]:
+        if not self.is_connected():
+            return self._disconnected_stub
+
+        # Return cached notification if available
+        if self._last_telemetry:
+            return self._last_telemetry
+
         try:
             data = self._run_async(self._async_read_telemetry())
             if data:
@@ -507,7 +540,7 @@ class BluetoothTransport(RobotTransport):
                 return data
         except Exception:
             self._connected = False
-        return _disconnected_stub
+        return self._disconnected_stub
 
 
 # ───────────────────────────────────────────────────────────────────────────────

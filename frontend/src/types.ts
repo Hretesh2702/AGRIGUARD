@@ -129,6 +129,9 @@ export interface TelemetryData {
   robot_location?: RobotPosition;
   esp32_ping_ms?: number | null;
   operating_mode?: string;
+  robot_status?: string;
+  movement?: string;
+  relay?: { state: string };
 }
 
 export interface DiagnosticsReport {
