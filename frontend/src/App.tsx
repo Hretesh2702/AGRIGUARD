@@ -9,9 +9,10 @@ import { DiagnosticsPage } from './pages/DiagnosticsPage';
 import { SensorsPage } from './pages/SensorsPage';
 import { DeviceHealthPage } from './pages/DeviceHealthPage';
 import { SystemLogsPage } from './pages/SystemLogsPage';
-import { SimulatedViewPage } from './simulator/SimulatedViewPage';
 import { ConnectPanel } from './components/ConnectPanel';
 import { AgriGuardTwin } from './digitalTwin/AgriGuardTwin';
+import { SimulatedViewPage } from './simulator/SimulatedViewPage';
+import { WeedManagementPage } from './pages/WeedManagementPage';
 import { AIDetection, TreatmentDecision } from './types';
 import {
   runCropScan,
@@ -36,17 +37,18 @@ import {
 } from 'lucide-react';
 
 // ─── Page meta ─────────────────────────────────────────────────────────────
-type TabId = 'dashboard' | 'remote' | 'diagnostics' | 'heatmap' | 'sensors' | 'devices' | 'logs' | 'simulation';
+type TabId = 'dashboard' | 'remote' | 'simulation' | 'diagnostics' | 'heatmap' | 'sensors' | 'devices' | 'logs' | 'weeds';
 
 const PAGE_META: Record<TabId, { title: string; section: string }> = {
   dashboard:   { title: 'Dashboard',           section: 'Overview' },
   heatmap:     { title: 'Field Monitor',        section: 'Field Operations' },
   remote:      { title: 'Robot Control',        section: 'Field Operations' },
+  simulation:  { title: '3D Simulation',        section: 'Simulation' },
   sensors:     { title: 'Sensors',              section: 'Hardware' },
   devices:     { title: 'Device Health',        section: 'Hardware' },
   diagnostics: { title: 'Hardware Diagnostics', section: 'System' },
   logs:        { title: 'System Logs',          section: 'System' },
-  simulation:  { title: 'Simulation',           section: 'Simulation' },
+  weeds:       { title: 'Weed Management',      section: 'Field Operations' },
 };
 
 // ─── App ────────────────────────────────────────────────────────────────────
@@ -126,6 +128,7 @@ export const App: React.FC = () => {
           wsConnected={wsConnected}
           onEmergencyStop={handleEmergencyStop}
         />
+
 
         {/* Page Content */}
         <div className="page-content">
@@ -311,11 +314,6 @@ export const App: React.FC = () => {
             <SystemLogsPage />
           )}
 
-          {/* ━━━ SIMULATION ━━━ */}
-          {activeTab === 'simulation' && (
-            <SimulatedViewPage />
-          )}
-
           {/* ━━━ FIELD MONITOR (Camera) ━━━ */}
           {activeTab === 'heatmap' && (
             <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -332,7 +330,17 @@ export const App: React.FC = () => {
             </div>
           )}
 
+          {/* ━━━ SIMULATION ━━━ */}
+          {activeTab === 'simulation' && (
+            <SimulatedViewPage />
+          )}
+
+          {activeTab === 'weeds' && (
+            <WeedManagementPage />
+          )}
+
         </div>
+
       </div>
     </div>
   );

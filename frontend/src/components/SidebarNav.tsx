@@ -7,11 +7,13 @@ import {
   Leaf,
   Activity,
   Cpu,
-  ScrollText
+  ScrollText,
+  MonitorPlay,
+  Crosshair
 } from 'lucide-react';
 import { TelemetryData } from '../types';
 
-type TabId = 'dashboard' | 'remote' | 'diagnostics' | 'heatmap' | 'sensors' | 'devices' | 'logs' | 'simulation';
+type TabId = 'dashboard' | 'remote' | 'simulation' | 'diagnostics' | 'heatmap' | 'sensors' | 'devices' | 'logs' | 'weeds';
 
 interface SidebarNavProps {
   activeTab: TabId;
@@ -24,6 +26,8 @@ const navItems: { id: TabId; label: string; icon: React.ElementType; section?: s
   { id: 'dashboard',   label: 'Dashboard',           icon: LayoutDashboard, section: 'MAIN' },
   { id: 'heatmap',     label: 'Field Monitor',        icon: Map },
   { id: 'remote',      label: 'Robot Control',        icon: Gamepad2 },
+  { id: 'simulation',  label: '3D Simulation',        icon: MonitorPlay },
+  { id: 'weeds',       label: 'Weed Management',      icon: Crosshair },
   { id: 'sensors',     label: 'Sensors',              icon: Activity, section: 'HARDWARE' },
   { id: 'devices',     label: 'Device Health',        icon: Cpu },
   { id: 'diagnostics', label: 'Hardware Diagnostics', icon: Stethoscope, section: 'SYSTEM' },

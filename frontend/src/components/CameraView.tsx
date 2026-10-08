@@ -57,11 +57,33 @@ export const CameraView: React.FC<CameraViewProps> = React.memo(({
   const [isToggling, setIsToggling] = useState(false);
   const [showReticle, setShowReticle] = useState(true);
   const [showDebugMetrics, setShowDebugMetrics] = useState(false);
-  const [autoScan, setAutoScan] = useState(false);
+  const [autoScan, setAutoScan] = useState(true);
   const [cameraSource, setCameraSource] = useState<'system'|'usb'>('system');
 
   // Performance metrics (updated only once per second for zero frame-by-frame UI re-renders)
   const [cameraFps, setCameraFps] = useState<number>(0);
+  const [systemFps, setSystemFps] = useState<number>(60);
+  
+  // Real System FPS Monitoring
+  useEffect(() => {
+    let frameCount = 0;
+    let lastTime = performance.now();
+    let animId: number;
+    
+    const measureSystemFps = () => {
+      const now = performance.now();
+      frameCount++;
+      if (now - lastTime >= 1000) {
+        setSystemFps(Math.round((frameCount * 1000) / (now - lastTime)));
+        frameCount = 0;
+        lastTime = now;
+      }
+      animId = requestAnimationFrame(measureSystemFps);
+    };
+    animId = requestAnimationFrame(measureSystemFps);
+    
+    return () => cancelAnimationFrame(animId);
+  }, []);
   const [droppedFrames, setDroppedFrames] = useState<number>(0);
   const [hardwareCapability, setHardwareCapability] = useState<string>('');
   const [aiFps, setAiFps] = useState<number>(0);
@@ -296,21 +318,22 @@ export const CameraView: React.FC<CameraViewProps> = React.memo(({
 
   // Throttled 2-5 FPS AI Auto-Sampler
   useEffect(() => {
-    if (!autoScan || !isEnabled || isScanning) return;
+    if (!autoScan || !isEnabled) return;
 
-    // 400ms = 2.5 inference FPS
+    // 200ms = 5 inference FPS
     const timer = setInterval(() => {
-      if (!isScanning && streamMode === 'direct') {
-        const start = performance.now();
-        const frame = captureFrameFromVideo();
-        if (frame) {
-          onTriggerScan(frame);
-          const duration = Math.round(performance.now() - start);
-          setLastInferenceMs(duration);
-          setAiFps(2.5);
-        }
-      }
-    }, 400);
+      if (isScanning) return;
+
+      const start = performance.now();
+      const frame = streamMode === 'direct' ? captureFrameFromVideo() : undefined;
+      
+      if (streamMode === 'direct' && !frame) return;
+      
+      onTriggerScan(frame || undefined);
+      const duration = Math.round(performance.now() - start);
+      setLastInferenceMs(duration);
+      setAiFps(5.0);
+    }, 200);
 
     return () => clearInterval(timer);
   }, [autoScan, isEnabled, isScanning, streamMode, captureFrameFromVideo, onTriggerScan]);
@@ -599,7 +622,7 @@ export const CameraView: React.FC<CameraViewProps> = React.memo(({
               top: '10px',
               left: '10px',
               background: 'rgba(10, 15, 24, 0.75)',
-              backdropFilter: 'blur(8px)',
+              
               padding: '4px 10px',
               borderRadius: '6px',
               fontSize: '0.72rem',
@@ -624,7 +647,7 @@ export const CameraView: React.FC<CameraViewProps> = React.memo(({
                 bottom: '10px',
                 left: '10px',
                 background: 'rgba(10, 15, 24, 0.92)',
-                backdropFilter: 'blur(10px)',
+                
                 padding: '8px 14px',
                 borderRadius: '8px',
                 fontSize: '0.70rem',
@@ -643,8 +666,9 @@ export const CameraView: React.FC<CameraViewProps> = React.memo(({
                     {streamMode === 'direct' ? 'DIRECT HTML5' : 'HTTP STREAM'}
                   </span>
                 </div>
-                <div>Requested FPS: <strong style={{ color: '#fff' }}>120</strong></div>
-                <div>Actual FPS: <strong style={{ color: cameraFps >= 60 ? '#34d399' : '#38bdf8' }}>{cameraFps}</strong></div>
+                                <div>Requested FPS: <strong style={{ color: '#fff' }}>120</strong></div>
+                <div>System UI FPS: <strong style={{ color: systemFps >= 50 ? '#34d399' : '#f87171' }}>{systemFps}</strong></div>
+                <div>Camera FPS: <strong style={{ color: cameraFps >= 60 ? '#34d399' : '#38bdf8' }}>{cameraFps}</strong></div>
                 <div>Resolution: <strong style={{ color: '#fff' }}>{resolution}</strong></div>
                 <div>AI FPS: <strong style={{ color: '#fff' }}>{autoScan ? `${aiFps.toFixed(1)}` : '0 (On-Demand)'}</strong></div>
                 <div>Inference Time: <strong style={{ color: '#fff' }}>{lastInferenceMs} ms</strong></div>
@@ -663,7 +687,7 @@ export const CameraView: React.FC<CameraViewProps> = React.memo(({
               top: '10px',
               right: '10px',
               background: 'rgba(10, 15, 24, 0.75)',
-              backdropFilter: 'blur(8px)',
+              
               padding: '4px 10px',
               borderRadius: '6px',
               fontSize: '0.72rem',
@@ -787,7 +811,7 @@ export const CameraView: React.FC<CameraViewProps> = React.memo(({
                 fontSize: '0.72rem',
                 fontWeight: 700,
                 zIndex: 10,
-                backdropFilter: 'blur(4px)',
+                
                 boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
                 pointerEvents: 'none',
                 letterSpacing: '0.02em',
@@ -870,10 +894,10 @@ export const CameraView: React.FC<CameraViewProps> = React.memo(({
                 borderColor: autoScan ? 'var(--emerald-500)' : undefined,
                 color: autoScan ? 'var(--emerald-400)' : 'var(--text-muted)'
               }}
-              title="Toggle automatic 2.5 FPS foliage pathology monitoring"
+              title="Toggle automatic 5.0 FPS foliage pathology monitoring"
             >
               <Sliders size={12} />
-              <span>Auto-Scan: {autoScan ? '2.5 FPS ON' : 'OFF'}</span>
+              <span>Auto-Scan: {autoScan ? '5.0 FPS ON' : 'OFF'}</span>
             </button>
 
             <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', fontFamily: 'JetBrains Mono, monospace' }}>

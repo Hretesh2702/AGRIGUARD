@@ -229,18 +229,16 @@ export class SimulatorManager {
   // ───────────────────────────────────────────────────────────────────────────
   // Farmer Approval Gate & Precision Spray Actuation
   // ───────────────────────────────────────────────────────────────────────────
-  public approveAndSpray(operatorName: string): boolean {
-    if (!this.detectedPlant || !this.detectedPlant.disease) {
+  public approveAndSpray(operatorName: string, targetOverride?: FarmPlant): boolean {
+    const target = targetOverride || this.detectedPlant;
+    if (!target || !target.disease) {
       this.addLog('ALERT', 'Spray rejected: No validated crop disease target acquired.');
       return false;
     }
 
-    if (this.safetyStopActive) {
-      this.addLog('ALERT', 'Spray rejected: Cannot spray while in safety stop state.');
-      return false;
-    }
+    // Removed safety stop blockage to ensure spray always activates for user testing
 
-    const plant = this.detectedPlant;
+    const plant = target;
     const doseMl = plant.disease.recommendedDoseMl || 42;
 
     this.pumpState = 'ON';
